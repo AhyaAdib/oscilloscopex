@@ -1,3 +1,4 @@
+
 extends SceneTree
 
 var _failures := 0
@@ -9,7 +10,9 @@ func _init() -> void:
 	_test_square_duty_cycle()
 	_test_triangle_and_sawtooth()
 	_test_dc_and_noise()
-	print("=== SUMMARY: %d PASSED, 0 FAILED ===" % _passed if _failures == 0 else "=== SUMMARY: %d PASSED, %d FAILED ===" % [_passed, _failures])
+	_test_analog_coupling_and_attenuation()
+	_test_analog_trigger()
+	print("=== SUMMARY: %d PASSED, %d FAILED ===" % [_passed, _failures])
 	quit(1 if _failures > 0 else 0)
 
 func _assert_near(actual: float, expected: float, tol: float, label: String) -> void:
@@ -19,6 +22,14 @@ func _assert_near(actual: float, expected: float, tol: float, label: String) -> 
 	else:
 		_failures += 1
 		printerr("[FAIL] %s (actual=%.5f, expected=%.5f, tol=%.5f)" % [label, actual, expected, tol])
+
+func _assert_true(cond: bool, label: String) -> void:
+	if cond:
+		_passed += 1
+		print("[PASS] %s" % label)
+	else:
+		_failures += 1
+		printerr("[FAIL] %s" % label)
 
 func _test_sine_wave() -> void:
 	var v_quarter := SignalGenerator.evaluate_sample(
@@ -65,3 +76,46 @@ func _test_dc_and_noise() -> void:
 		sum += val
 	var mean := sum / float(v.size())
 	_assert_near(mean, -1.25, 0.03, "DC + Gaussian noise sample mean convergence")
+
+func _test_analog_coupling_and_attenuation() -> void:
+	# Pure DC +5.0 V through AC coupling should decay toward 0 V
+	var raw := SignalGenerator.generate_buffer({
+		"waveform": SignalGenerator.WaveformType.DC,
+		"dc_offset": 5.0
+	}, 1000, 0.2) # 200 ms >> RC (15.9 ms)
+	var res_ac := AnalogScopeEngine.process_chain(
+		raw["times"], raw["voltages"], raw["dt"],
+		{"coupling": AnalogScopeEngine.CouplingMode.AC, "probe_attenuation": 10.0},
+		{"volts_per_div": 1.0, "time_per_div": 0.005}
+	)
+	var coupled: PackedFloat64Array = res_ac["coupled"]
+	var attenuated: PackedFloat64Array = res_ac["attenuated"]
+	_assert_near(coupled[coupled.size() - 1], 0.0, 0.01, "AC coupling rejects steady-state DC offset")
+
+	# DC coupling with 10x probe divides physical attenuated node by 10
+	var res_dc := AnalogScopeEngine.process_chain(
+		raw["times"], raw["voltages"], raw["dt"],
+		{"coupling": AnalogScopeEngine.CouplingMode.DC, "probe_attenuation": 10.0},
+		{"volts_per_div": 1.0, "time_per_div": 0.005}
+	)
+	var att_dc: PackedFloat64Array = res_dc["attenuated"]
+	_assert_near(att_dc[0], 0.5, 1e-5, "10x probe divider outputs 0.5V for 5.0V input")
+
+func _test_analog_trigger() -> void:
+	var raw := SignalGenerator.generate_buffer({
+		"waveform": SignalGenerator.WaveformType.SINE,
+		"amplitude": 2.0,
+		"frequency": 1000.0
+	}, 3000, 0.015)
+	var res := AnalogScopeEngine.process_chain(
+		raw["times"], raw["voltages"], raw["dt"],
+		{
+			"coupling": AnalogScopeEngine.CouplingMode.DC,
+			"trigger_level": 1.0,
+			"trigger_slope": AnalogScopeEngine.TriggerSlope.RISING
+		},
+		{"volts_per_div": 1.0, "time_per_div": 0.0005}
+	)
+	_assert_true(res["triggered"], "Analog trigger locks on +1.0V rising edge")
+	var sweep_v: PackedFloat64Array = res["sweep_volts"]
+	_assert_near(sweep_v[0], 1.0, 0.05, "Triggered sweep starts near +1.0V threshold")

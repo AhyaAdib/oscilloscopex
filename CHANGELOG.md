@@ -1,6 +1,12 @@
 
 # Changelog
 
+## [0.3.0] - 2026-11-20 — Milestone 2
+### Added
+- Implemented `AnalogScopeEngine` (`scripts/analog/analog_scope_engine.gd`) with AC/DC/GND coupling, 1x/10x probe attenuation, rail saturation, edge trigger with hysteresis, and sweep extraction.
+- Created procedural `RotaryKnob` (`scripts/ui/rotary_knob.gd`) and styled the National VP-5231A front panel & cyan-teal P31 CRT display.
+- Added unit tests for AC coupling DC rejection, 10x probe division, and rising-edge trigger lock (`11 PASSED, 0 FAILED`).
+
 ## [0.2.0] - 2026-11-20 — Milestone 1
 ### Added
 - Implemented `SignalGenerator` (`scripts/signal/signal_generator.gd`) supporting Sine, Square, Triangle, Sawtooth, Pulse, DC, and seeded Gaussian Noise.
