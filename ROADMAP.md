@@ -17,11 +17,14 @@
   - Edge trigger circuit (Rising/Falling slope, trigger level, hysteresis)
   - Timebase sweep generator & horizontal position
   - National VP-5231A themed chassis, cyan-blue CRT screen, scale illumination, focus, intensity, and persistence (`11 PASSED, 0 FAILED`)
-- [ ] **Milestone 3 — Analog Internal Architecture Explorer** (Next)
-  - Interactive block diagram & live node voltage/waveform inspection sharing `SimState`
-- [ ] **Milestone 4 — 3D Workbench & Exact National VP-5231A 3D Instrument**
-  - Procedural 3D National VP-5231A chassis with every physical knob, switch, and jack from the reference hardware
-  - Keep Talking and Nobody Explodes style interactive camera inspection, 3D rotary knob manipulation, and physical BNC/hook probe placement onto Circuit-Under-Test (DUT) test points
+- [x] **Milestone 3 — Analog Internal Architecture Explorer** (Completed)
+  - 8-node analog signal & timing telemetry (`N1_INPUT` through `N8_SWEEP`)
+  - Interactive signal-flow diagram with live node waveform probe & transfer equations (`14 PASSED, 0 FAILED`)
+- [ ] **Milestone 4 — 3D Workbench & Exact National VP-5231A 3D Instrument** (In Progress)
+  - Procedural 3D National VP-5231A chassis with cream CRT bezel, brushed grey faceplate, rotary knobs, slide switches, lever selector, and BNC connectors
+  - Live `SubViewport` cyan-blue CRT screen synchronized with `SimState`
+  - KTANE-style camera focus presets (`Overview`, `Scope Zoom`, `CRT Close-Up`, `Circuit Bench`) + free orbit/pan/zoom
+  - Interactive 3D raycast knob rotation & switch toggling
 - [ ] **Milestone 5 — Digital Oscilloscope (DSO)**
 - [ ] **Milestone 6 — Digital Internal Architecture Explorer**
 - [ ] **Milestone 7 — Laboratory Mode (Fault Injection, FFT, CSV Export) & Release**

@@ -12,6 +12,7 @@ func _init() -> void:
 	_test_dc_and_noise()
 	_test_analog_coupling_and_attenuation()
 	_test_analog_trigger()
+	_test_internal_nodes_and_rail_clamp()
 	print("=== SUMMARY: %d PASSED, %d FAILED ===" % [_passed, _failures])
 	quit(1 if _failures > 0 else 0)
 
@@ -78,27 +79,24 @@ func _test_dc_and_noise() -> void:
 	_assert_near(mean, -1.25, 0.03, "DC + Gaussian noise sample mean convergence")
 
 func _test_analog_coupling_and_attenuation() -> void:
-	# Pure DC +5.0 V through AC coupling should decay toward 0 V
 	var raw := SignalGenerator.generate_buffer({
 		"waveform": SignalGenerator.WaveformType.DC,
 		"dc_offset": 5.0
-	}, 1000, 0.2) # 200 ms >> RC (15.9 ms)
+	}, 1000, 0.2)
 	var res_ac := AnalogScopeEngine.process_chain(
 		raw["times"], raw["voltages"], raw["dt"],
 		{"coupling": AnalogScopeEngine.CouplingMode.AC, "probe_attenuation": 10.0},
 		{"volts_per_div": 1.0, "time_per_div": 0.005}
 	)
-	var coupled: PackedFloat64Array = res_ac["coupled"]
-	var attenuated: PackedFloat64Array = res_ac["attenuated"]
+	var coupled: PackedFloat64Array = res_ac["nodes"]["N2_COUPLING"]
 	_assert_near(coupled[coupled.size() - 1], 0.0, 0.01, "AC coupling rejects steady-state DC offset")
 
-	# DC coupling with 10x probe divides physical attenuated node by 10
 	var res_dc := AnalogScopeEngine.process_chain(
 		raw["times"], raw["voltages"], raw["dt"],
 		{"coupling": AnalogScopeEngine.CouplingMode.DC, "probe_attenuation": 10.0},
 		{"volts_per_div": 1.0, "time_per_div": 0.005}
 	)
-	var att_dc: PackedFloat64Array = res_dc["attenuated"]
+	var att_dc: PackedFloat64Array = res_dc["nodes"]["N3_ATTENUATOR"]
 	_assert_near(att_dc[0], 0.5, 1e-5, "10x probe divider outputs 0.5V for 5.0V input")
 
 func _test_analog_trigger() -> void:
@@ -117,5 +115,24 @@ func _test_analog_trigger() -> void:
 		{"volts_per_div": 1.0, "time_per_div": 0.0005}
 	)
 	_assert_true(res["triggered"], "Analog trigger locks on +1.0V rising edge")
+	var trig_idx: int = res["trigger_index"]
+	var coupled: PackedFloat64Array = res["nodes"]["N2_COUPLING"]
+	_assert_near(coupled[trig_idx], 1.0, 0.05, "Trigger comparator fires at +1.0V on N2_COUPLING")
 	var sweep_v: PackedFloat64Array = res["sweep_volts"]
-	_assert_near(sweep_v[0], 1.0, 0.05, "Triggered sweep starts near +1.0V threshold")
+	_assert_near(sweep_v[0], 0.42, 0.05, "Vertical deflection shows 50us delay-line pre-trigger offset")
+
+func _test_internal_nodes_and_rail_clamp() -> void:
+	var raw := SignalGenerator.generate_buffer({
+		"waveform": SignalGenerator.WaveformType.DC,
+		"dc_offset": 65.0
+	}, 600, 0.015)
+	var res := AnalogScopeEngine.process_chain(
+		raw["times"], raw["voltages"], raw["dt"],
+		{"coupling": AnalogScopeEngine.CouplingMode.DC, "probe_attenuation": 1.0},
+		{"volts_per_div": 1.0, "time_per_div": 0.0005}
+	)
+	var nodes: Dictionary = res["nodes"]
+	var preamp: PackedFloat64Array = nodes["N4_PREAMP"]
+	var sweep_ramp: PackedFloat64Array = nodes["N8_SWEEP"]
+	_assert_near(preamp[0], 40.0, 1e-5, "Preamp clamps over-range +65V input to +40V supply rail")
+	_assert_near(sweep_ramp[sweep_ramp.size() - 1], 5.0, 1e-5, "Miller sweep ramp reaches +5.0V full-scale deflection")

@@ -4,6 +4,10 @@ extends Control
 var _canvas: WaveformCanvas
 var _animate_check: CheckButton
 var _power_led: ColorRect
+var _instrument_view: Control
+var _circuit_view: AnalogCircuitExplorer
+var _btn_inst_mode: Button
+var _btn_arch_mode: Button
 
 const CHASSIS_GREY := Color(0.77, 0.75, 0.72, 1.0)
 const CHASSIS_DARK := Color(0.24, 0.23, 0.22, 1.0)
@@ -17,8 +21,8 @@ const TIME_STEPS := [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005]
 const TIME_LABELS: Array[String] = ["0.1ms", "0.2ms", "0.5ms", "1ms", "2ms", "5ms"]
 
 func _ready() -> void:
-	print("[Oscilloscope Lab] National VP-5231A Chassis Boot | Renderer: ", RenderingServer.get_video_adapter_name())
-	_build_vp5231a_chassis()
+	print("[Oscilloscope Lab] Milestone 3 Boot (VP-5231A + Internal Circuit Explorer) | Renderer: ", RenderingServer.get_video_adapter_name())
+	_build_workspace()
 
 func _process(delta: float) -> void:
 	if _animate_check != null and _animate_check.button_pressed:
@@ -32,30 +36,62 @@ func _make_panel_style(bg: Color, border: Color, border_w := 2, radius := 4) -> 
 	sb.set_corner_radius_all(radius)
 	return sb
 
-func _build_vp5231a_chassis() -> void:
-	# Dark lab bench background
+func _set_active_mode(mode_idx: int) -> void:
+	_instrument_view.visible = (mode_idx == 0)
+	_circuit_view.visible = (mode_idx == 1)
+	_btn_inst_mode.button_pressed = (mode_idx == 0)
+	_btn_arch_mode.button_pressed = (mode_idx == 1)
+
+func _build_workspace() -> void:
 	var bench := ColorRect.new()
-	bench.color = Color(0.10, 0.11, 0.13, 1.0)
+	bench.color = Color(0.09, 0.10, 0.12, 1.0)
 	bench.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bench)
 
 	var outer_margin := MarginContainer.new()
 	outer_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	outer_margin.add_theme_constant_override("margin_left", 18)
-	outer_margin.add_theme_constant_override("margin_right", 18)
-	outer_margin.add_theme_constant_override("margin_top", 14)
-	outer_margin.add_theme_constant_override("margin_bottom", 14)
+	outer_margin.add_theme_constant_override("margin_left", 16)
+	outer_margin.add_theme_constant_override("margin_right", 16)
+	outer_margin.add_theme_constant_override("margin_top", 10)
+	outer_margin.add_theme_constant_override("margin_bottom", 12)
 	add_child(outer_margin)
 
 	var root_vbox := VBoxContainer.new()
-	root_vbox.add_theme_constant_override("separation", 10)
+	root_vbox.add_theme_constant_override("separation", 8)
 	outer_margin.add_child(root_vbox)
 
-	# Outer Metallic Oscilloscope Casing
+	# ==================== TOP MODE NAVIGATION BAR ====================
+	var nav_bar := HBoxContainer.new()
+	nav_bar.add_theme_constant_override("separation", 10)
+	root_vbox.add_child(nav_bar)
+
+	var app_title := Label.new()
+	app_title.text = "OSCILLOSCOPE LAB  //  NATIONAL VP-5231A"
+	app_title.add_theme_font_size_override("font_size", 15)
+	app_title.add_theme_color_override("font_color", Color(0.35, 0.96, 0.72, 1.0))
+	app_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav_bar.add_child(app_title)
+
+	_btn_inst_mode = Button.new()
+	_btn_inst_mode.text = "  [1] Virtual Instrument (VP-5231A)  "
+	_btn_inst_mode.toggle_mode = true
+	_btn_inst_mode.button_pressed = true
+	_btn_inst_mode.pressed.connect(func() -> void: _set_active_mode(0))
+	nav_bar.add_child(_btn_inst_mode)
+
+	_btn_arch_mode = Button.new()
+	_btn_arch_mode.text = "  [2] Internal Architecture Explorer  "
+	_btn_arch_mode.toggle_mode = true
+	_btn_arch_mode.button_pressed = false
+	_btn_arch_mode.pressed.connect(func() -> void: _set_active_mode(1))
+	nav_bar.add_child(_btn_arch_mode)
+
+	# ==================== VIEW 1: NATIONAL VP-5231A CHASSIS ====================
 	var casing := PanelContainer.new()
 	casing.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	casing.add_theme_stylebox_override("panel", _make_panel_style(CHASSIS_GREY, CHASSIS_DARK, 4, 6))
 	root_vbox.add_child(casing)
+	_instrument_view = casing
 
 	var casing_pad := MarginContainer.new()
 	casing_pad.add_theme_constant_override("margin_left", 12)
@@ -68,14 +104,12 @@ func _build_vp5231a_chassis() -> void:
 	face_hbox.add_theme_constant_override("separation", 12)
 	casing_pad.add_child(face_hbox)
 
-	# ==================== LEFT COLUMN: CRT BEZEL + POWER/BEAM STRIP ====================
 	var left_col := VBoxContainer.new()
 	left_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left_col.size_flags_stretch_ratio = 1.15
 	left_col.add_theme_constant_override("separation", 8)
 	face_hbox.add_child(left_col)
 
-	# Cream Bezel Frame
 	var bezel := PanelContainer.new()
 	bezel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	bezel.add_theme_stylebox_override("panel", _make_panel_style(BEZEL_CREAM, BEZEL_INNER, 3, 6))
@@ -92,7 +126,6 @@ func _build_vp5231a_chassis() -> void:
 	bezel_vbox.add_theme_constant_override("separation", 6)
 	bezel_pad.add_child(bezel_vbox)
 
-	# Top Badge: National | OSCILLOSCOPE VP-5231A [30]
 	var badge := PanelContainer.new()
 	badge.add_theme_stylebox_override("panel", _make_panel_style(Color(0.18, 0.17, 0.16, 1.0), Color(0.10, 0.10, 0.10, 1.0), 1, 2))
 	bezel_vbox.add_child(badge)
@@ -113,13 +146,11 @@ func _build_vp5231a_chassis() -> void:
 	model_lbl.add_theme_color_override("font_color", Color(0.88, 0.85, 0.78, 1.0))
 	badge_hbox.add_child(model_lbl)
 
-	# Cyan-Blue CRT Display
 	_canvas = WaveformCanvas.new()
 	_canvas.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_canvas.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	bezel_vbox.add_child(_canvas)
 
-	# Bottom Strip: POWER + INTENSITY + FOCUS + SCALE ILLUM
 	var bottom_strip := PanelContainer.new()
 	bottom_strip.add_theme_stylebox_override("panel", _make_panel_style(Color(0.73, 0.71, 0.68, 1.0), Color(0.45, 0.44, 0.42, 1.0), 1, 3))
 	left_col.add_child(bottom_strip)
@@ -128,9 +159,9 @@ func _build_vp5231a_chassis() -> void:
 	strip_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	bottom_strip.add_child(strip_hbox)
 
-	# Power Button + Pilot Lamp
 	var pwr_box := VBoxContainer.new()
 	pwr_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	pwr_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	strip_hbox.add_child(pwr_box)
 
 	var pwr_lbl := _silk_label("POWER", 10)
@@ -163,14 +194,12 @@ func _build_vp5231a_chassis() -> void:
 		SimState.set_analog_param("scale_illum", v)
 	)
 
-	# ==================== RIGHT COLUMN: ANALOG CONTROL PANEL ====================
 	var right_col := VBoxContainer.new()
 	right_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right_col.size_flags_stretch_ratio = 1.0
 	right_col.add_theme_constant_override("separation", 8)
 	face_hbox.add_child(right_col)
 
-	# Top Row: TRIGGER + HORIZONTAL TIME/DIV
 	var top_controls := HBoxContainer.new()
 	top_controls.add_theme_constant_override("separation", 8)
 	right_col.add_child(top_controls)
@@ -186,6 +215,7 @@ func _build_vp5231a_chassis() -> void:
 
 	var slope_col := VBoxContainer.new()
 	slope_col.alignment = BoxContainer.ALIGNMENT_CENTER
+	slope_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	trig_row.add_child(slope_col)
 	slope_col.add_child(_silk_label("SLOPE", 10))
 	var slope_opt := OptionButton.new()
@@ -209,7 +239,6 @@ func _build_vp5231a_chassis() -> void:
 		SimState.set_analog_param("horiz_pos_div", v)
 	)
 
-	# Middle Row: VERTICAL CH 1 + PROBE / PHOSPHOR
 	var vert_controls := HBoxContainer.new()
 	vert_controls.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vert_controls.add_theme_constant_override("separation", 8)
@@ -228,7 +257,6 @@ func _build_vp5231a_chassis() -> void:
 		SimState.set_view_param("volts_per_div", VOLTS_STEPS[idx])
 	)
 
-	# AC - GND - DC Slide Selector Bar
 	var coup_row := HBoxContainer.new()
 	coup_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	coup_row.add_theme_constant_override("separation", 6)
@@ -254,6 +282,7 @@ func _build_vp5231a_chassis() -> void:
 
 	var probe_col := VBoxContainer.new()
 	probe_col.alignment = BoxContainer.ALIGNMENT_CENTER
+	probe_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	aux_knobs.add_child(probe_col)
 	probe_col.add_child(_silk_label("PROBE", 10))
 	var probe_opt := OptionButton.new()
@@ -263,6 +292,12 @@ func _build_vp5231a_chassis() -> void:
 		SimState.set_analog_param("probe_attenuation", 10.0 if idx == 1 else 1.0)
 	)
 	probe_col.add_child(probe_opt)
+
+	# ==================== VIEW 2: ANALOG INTERNAL ARCHITECTURE EXPLORER ====================
+	_circuit_view = AnalogCircuitExplorer.new()
+	_circuit_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_circuit_view.visible = false
+	root_vbox.add_child(_circuit_view)
 
 	# ==================== BOTTOM BENCH BAR: FUNCTION GENERATOR SOURCE ====================
 	var gen_bar := PanelContainer.new()

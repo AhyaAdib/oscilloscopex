@@ -1,6 +1,13 @@
 
 # Changelog
 
+## [0.4.0] - 2026-11-20 — Milestone 3
+### Added
+- Expanded `AnalogScopeEngine` (`scripts/analog/analog_scope_engine.gd`) to output all 8 internal circuit node buffers (`N1_INPUT` through `N8_SWEEP`).
+- Built interactive `AnalogCircuitExplorer` (`scripts/circuit/analog_circuit_explorer.gd`) with animated signal-flow paths, transfer equations, and live node oscilloscope probe previews.
+- Integrated top-bar mode switching between Virtual Instrument and Internal Architecture Explorer in `scripts/core/main.gd`.
+- Expanded automated validation suite (`tests/run_tests.gd`) to 14 passing tests.
+
 ## [0.3.0] - 2026-11-20 — Milestone 2
 ### Added
 - Implemented `AnalogScopeEngine` (`scripts/analog/analog_scope_engine.gd`) with AC/DC/GND coupling, 1x/10x probe attenuation, rail clamping, and edge trigger with hysteresis.
