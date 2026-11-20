@@ -4,8 +4,10 @@ extends Control
 var _canvas: WaveformCanvas
 var _animate_check: CheckButton
 var _power_led: ColorRect
+var _workbench_3d: Workbench3D
 var _instrument_view: Control
 var _circuit_view: AnalogCircuitExplorer
+var _btn_3d_mode: Button
 var _btn_inst_mode: Button
 var _btn_arch_mode: Button
 
@@ -21,7 +23,7 @@ const TIME_STEPS := [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005]
 const TIME_LABELS: Array[String] = ["0.1ms", "0.2ms", "0.5ms", "1ms", "2ms", "5ms"]
 
 func _ready() -> void:
-	print("[Oscilloscope Lab] Milestone 3 Boot (VP-5231A + Internal Circuit Explorer) | Renderer: ", RenderingServer.get_video_adapter_name())
+	print("[Oscilloscope Lab] Milestone 4 3D Workbench Boot | Renderer: ", RenderingServer.get_video_adapter_name())
 	_build_workspace()
 
 func _process(delta: float) -> void:
@@ -37,10 +39,12 @@ func _make_panel_style(bg: Color, border: Color, border_w := 2, radius := 4) -> 
 	return sb
 
 func _set_active_mode(mode_idx: int) -> void:
-	_instrument_view.visible = (mode_idx == 0)
-	_circuit_view.visible = (mode_idx == 1)
-	_btn_inst_mode.button_pressed = (mode_idx == 0)
-	_btn_arch_mode.button_pressed = (mode_idx == 1)
+	_workbench_3d.visible = (mode_idx == 0)
+	_instrument_view.visible = (mode_idx == 1)
+	_circuit_view.visible = (mode_idx == 2)
+	_btn_3d_mode.button_pressed = (mode_idx == 0)
+	_btn_inst_mode.button_pressed = (mode_idx == 1)
+	_btn_arch_mode.button_pressed = (mode_idx == 2)
 
 func _build_workspace() -> void:
 	var bench := ColorRect.new()
@@ -50,8 +54,8 @@ func _build_workspace() -> void:
 
 	var outer_margin := MarginContainer.new()
 	outer_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	outer_margin.add_theme_constant_override("margin_left", 16)
-	outer_margin.add_theme_constant_override("margin_right", 16)
+	outer_margin.add_theme_constant_override("margin_left", 14)
+	outer_margin.add_theme_constant_override("margin_right", 14)
 	outer_margin.add_theme_constant_override("margin_top", 10)
 	outer_margin.add_theme_constant_override("margin_bottom", 12)
 	add_child(outer_margin)
@@ -62,7 +66,7 @@ func _build_workspace() -> void:
 
 	# ==================== TOP MODE NAVIGATION BAR ====================
 	var nav_bar := HBoxContainer.new()
-	nav_bar.add_theme_constant_override("separation", 10)
+	nav_bar.add_theme_constant_override("separation", 8)
 	root_vbox.add_child(nav_bar)
 
 	var app_title := Label.new()
@@ -72,23 +76,36 @@ func _build_workspace() -> void:
 	app_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nav_bar.add_child(app_title)
 
+	_btn_3d_mode = Button.new()
+	_btn_3d_mode.text = " [1] 3D Lab Workbench "
+	_btn_3d_mode.toggle_mode = true
+	_btn_3d_mode.button_pressed = true
+	_btn_3d_mode.pressed.connect(func() -> void: _set_active_mode(0))
+	nav_bar.add_child(_btn_3d_mode)
+
 	_btn_inst_mode = Button.new()
-	_btn_inst_mode.text = "  [1] Virtual Instrument (VP-5231A)  "
+	_btn_inst_mode.text = " [2] 2D Front Panel "
 	_btn_inst_mode.toggle_mode = true
-	_btn_inst_mode.button_pressed = true
-	_btn_inst_mode.pressed.connect(func() -> void: _set_active_mode(0))
+	_btn_inst_mode.button_pressed = false
+	_btn_inst_mode.pressed.connect(func() -> void: _set_active_mode(1))
 	nav_bar.add_child(_btn_inst_mode)
 
 	_btn_arch_mode = Button.new()
-	_btn_arch_mode.text = "  [2] Internal Architecture Explorer  "
+	_btn_arch_mode.text = " [3] Internal Architecture "
 	_btn_arch_mode.toggle_mode = true
 	_btn_arch_mode.button_pressed = false
-	_btn_arch_mode.pressed.connect(func() -> void: _set_active_mode(1))
+	_btn_arch_mode.pressed.connect(func() -> void: _set_active_mode(2))
 	nav_bar.add_child(_btn_arch_mode)
 
-	# ==================== VIEW 1: NATIONAL VP-5231A CHASSIS ====================
+	# ==================== VIEW 1: 3D LAB WORKBENCH ====================
+	_workbench_3d = Workbench3D.new()
+	_workbench_3d.visible = true
+	root_vbox.add_child(_workbench_3d)
+
+	# ==================== VIEW 2: 2D NATIONAL VP-5231A CHASSIS ====================
 	var casing := PanelContainer.new()
 	casing.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	casing.visible = false
 	casing.add_theme_stylebox_override("panel", _make_panel_style(CHASSIS_GREY, CHASSIS_DARK, 4, 6))
 	root_vbox.add_child(casing)
 	_instrument_view = casing
@@ -293,7 +310,7 @@ func _build_workspace() -> void:
 	)
 	probe_col.add_child(probe_opt)
 
-	# ==================== VIEW 2: ANALOG INTERNAL ARCHITECTURE EXPLORER ====================
+	# ==================== VIEW 3: ANALOG INTERNAL ARCHITECTURE EXPLORER ====================
 	_circuit_view = AnalogCircuitExplorer.new()
 	_circuit_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_circuit_view.visible = false

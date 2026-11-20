@@ -326,6 +326,8 @@ func _refresh_inspector() -> void:
 	_metrics_lbl.text = "Vpp: %.3f V   |   Vrms: %.3f V   |   Min/Max: %.2fV / %.2fV" % [
 		stats["v_pp"], stats["v_rms"], stats["v_min"], stats["v_max"]
 	]
+	if _diagram_canvas != null:
+		_diagram_canvas.queue_redraw()
 	if _probe_canvas != null:
 		_probe_canvas.queue_redraw()
 

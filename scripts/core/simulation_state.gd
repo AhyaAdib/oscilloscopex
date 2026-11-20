@@ -1,4 +1,3 @@
-
 extends Node
 
 signal state_updated
@@ -26,6 +25,8 @@ var view_config := {
 var analog_config := {
 	"coupling": AnalogScopeEngine.CouplingMode.DC,
 	"probe_attenuation": 1.0,
+	"probe_compensation": 0.72, # Slightly under-compensated initially so user can calibrate on CAL 1Vp-p!
+	"probe_target": AnalogScopeEngine.ProbeTarget.FUNC_GEN,
 	"vert_pos_div": 0.0,
 	"horiz_pos_div": 0.0,
 	"trigger_level": 0.0,
@@ -87,7 +88,33 @@ func recompute() -> void:
 	var total_span := sweep_span * 3.0
 	var total_samples := sweep_samples * 3
 
-	var raw := SignalGenerator.generate_buffer(signal_params, total_samples, total_span, sim_time_offset)
+	var active_sig := signal_params
+	var target: int = int(analog_config.get("probe_target", AnalogScopeEngine.ProbeTarget.FUNC_GEN))
+	if target == AnalogScopeEngine.ProbeTarget.CAL_1VPP:
+		# Built-in VP-5231A 1 kHz, 1.0 Vp-p (0V to +1V) square calibration reference
+		active_sig = {
+			"waveform": SignalGenerator.WaveformType.SQUARE,
+			"amplitude": 0.5,
+			"frequency": 1000.0,
+			"phase_deg": 0.0,
+			"dc_offset": 0.5,
+			"duty_cycle": 0.50,
+			"noise_rms": 0.005,
+			"noise_seed": 42
+		}
+	elif target == AnalogScopeEngine.ProbeTarget.FLOATING:
+		active_sig = {
+			"waveform": SignalGenerator.WaveformType.DC,
+			"amplitude": 0.0,
+			"frequency": 50.0,
+			"phase_deg": 0.0,
+			"dc_offset": 0.0,
+			"duty_cycle": 0.50,
+			"noise_rms": 0.015,
+			"noise_seed": 77
+		}
+
+	var raw := SignalGenerator.generate_buffer(active_sig, total_samples, total_span, sim_time_offset)
 	raw_time_buffer = raw["times"]
 	raw_voltage_buffer = raw["voltages"]
 	var dt: float = raw["dt"]

@@ -1,4 +1,3 @@
-
 class_name AnalogScopeEngine
 extends RefCounted
 
@@ -13,12 +12,19 @@ enum TriggerSlope {
 	FALLING
 }
 
+enum ProbeTarget {
+	FUNC_GEN,
+	CAL_1VPP,
+	FLOATING
+}
+
 const COUPLING_NAMES := ["DC", "AC", "GND"]
 const SLOPE_NAMES := ["Rising (+)", "Falling (-)"]
+const PROBE_TARGET_NAMES := ["Function Generator OUT", "Scope CAL (1 Vp-p 1kHz)", "Floating (Disconnected)"]
 
 const AC_COUPLING_FC := 10.0
 const AMP_RAIL_VOLTS := 40.0
-const DELAY_LINE_SEC := 0.00005 # 50 us visible educational delay offset on internal probe
+const DELAY_LINE_SEC := 0.00005
 
 static func process_chain(
 	raw_times: PackedFloat64Array,
@@ -55,6 +61,7 @@ static func process_chain(
 
 	var coupling: int = analog_cfg.get("coupling", CouplingMode.DC)
 	var probe_atten: float = analog_cfg.get("probe_attenuation", 1.0)
+	var probe_comp: float = analog_cfg.get("probe_compensation", 1.0) # 0.65 (under) .. 1.0 (flat) .. 1.35 (over)
 	var vert_pos_div: float = analog_cfg.get("vert_pos_div", 0.0)
 	var volts_per_div: float = maxf(float(view_cfg.get("volts_per_div", 1.0)), 1e-6)
 	var time_per_div: float = maxf(float(view_cfg.get("time_per_div", 0.0005)), 1e-9)
@@ -76,20 +83,29 @@ static func process_chain(
 				else:
 					coupled[i] = alpha * (coupled[i - 1] + (vin - raw_voltages[i - 1]))
 
-	# 2. Attenuator (N3_ATTENUATOR) & Vertical Preamp (N4_PREAMP)
+	# 2. Attenuator (N3_ATTENUATOR) + Probe Compensation RC Edge Effect & Preamp Gain (N4_PREAMP)
+	# Preamp scales attenuated signal by vertical sensitivity gain Av = probe_atten / volts_per_div
 	var div_factor := 1.0 / maxf(probe_atten, 1.0)
+	var preamp_gain := probe_atten / volts_per_div
+	var comp_state := 0.0
+	var comp_decay := exp(-safe_dt / 0.00008)
+
 	for i in range(n):
 		var v_att := coupled[i] * div_factor
+		if probe_atten > 1.5 and i > 0:
+			var dv := v_att - (coupled[i - 1] * div_factor)
+			comp_state = comp_state * comp_decay + dv * (probe_comp - 1.0) * 1.4
+			v_att += comp_state
 		attenuated[i] = v_att
-		preamp[i] = clampf(v_att * probe_atten, -AMP_RAIL_VOLTS, AMP_RAIL_VOLTS)
+		preamp[i] = clampf(v_att * preamp_gain, -AMP_RAIL_VOLTS, AMP_RAIL_VOLTS)
 
 	# 3. Delay Line (N5_DELAY_LINE) & Vertical Deflection Plates (N6_VERT_DEFLECT)
 	var delay_samples := clampi(int(round(DELAY_LINE_SEC / safe_dt)), 1, maxi(n / 8, 1))
-	var vert_offset_v := vert_pos_div * volts_per_div
 	for i in range(n):
 		var src_i := maxi(i - delay_samples, 0)
 		delayed[i] = preamp[src_i]
-		vert_deflection[i] = delayed[i] + vert_offset_v
+		# Convert division-scaled preamp output back to screen volts + vertical position offset
+		vert_deflection[i] = (delayed[i] + vert_pos_div) * volts_per_div
 
 	# 4. Trigger Comparator (N7_TRIGGER)
 	var trig_level: float = analog_cfg.get("trigger_level", 0.0)
@@ -124,7 +140,6 @@ static func process_chain(
 	var shift_samples := int(round((horiz_pos_div * time_per_div) / safe_dt))
 	start_idx = clampi(start_idx - shift_samples, 0, maxi(n - sweep_samples, 0))
 
-	# Synthesize Trigger Gate Pulse (0V -> +5V at trigger instant) & Miller Sweep Ramp (-5V -> +5V)
 	for i in range(n):
 		var comp_high := (coupled[i] >= trig_level) if trig_slope == TriggerSlope.RISING else (coupled[i] <= trig_level)
 		trigger_pulse[i] = 5.0 if comp_high else 0.0
