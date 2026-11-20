@@ -1,15 +1,24 @@
-
 extends Control
 
 var _canvas: WaveformCanvas
 var _animate_check: CheckButton
 var _power_led: ColorRect
+var _pwr_btn: Button
 var _workbench_3d: Workbench3D
 var _instrument_view: Control
 var _circuit_view: AnalogCircuitExplorer
 var _btn_3d_mode: Button
 var _btn_inst_mode: Button
 var _btn_arch_mode: Button
+
+# Two-way synced 2D controls
+var _knobs_2d := {}
+var _slope_opt: OptionButton
+var _coup_opt: OptionButton
+var _probe_opt: OptionButton
+var _wf_opt: OptionButton
+var _gen_sliders := {}
+var _syncing_ui := false
 
 const CHASSIS_GREY := Color(0.77, 0.75, 0.72, 1.0)
 const CHASSIS_DARK := Color(0.24, 0.23, 0.22, 1.0)
@@ -23,8 +32,10 @@ const TIME_STEPS := [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005]
 const TIME_LABELS: Array[String] = ["0.1ms", "0.2ms", "0.5ms", "1ms", "2ms", "5ms"]
 
 func _ready() -> void:
-	print("[Oscilloscope Lab] Milestone 4 3D Workbench Boot | Renderer: ", RenderingServer.get_video_adapter_name())
+	print("[Oscilloscope Lab] Milestone 4/5 Synced Boot | Renderer: ", RenderingServer.get_video_adapter_name())
 	_build_workspace()
+	SimState.state_updated.connect(_sync_2d_from_state)
+	_sync_2d_from_state()
 
 func _process(delta: float) -> void:
 	if _animate_check != null and _animate_check.button_pressed:
@@ -45,6 +56,62 @@ func _set_active_mode(mode_idx: int) -> void:
 	_btn_3d_mode.button_pressed = (mode_idx == 0)
 	_btn_inst_mode.button_pressed = (mode_idx == 1)
 	_btn_arch_mode.button_pressed = (mode_idx == 2)
+
+func _sync_2d_from_state() -> void:
+	if _syncing_ui:
+		return
+	_syncing_ui = true
+
+	var on: bool = bool(SimState.view_config.get("power_on", true))
+	if _pwr_btn != null:
+		_pwr_btn.set_pressed_no_signal(on)
+	if _power_led != null:
+		_power_led.color = Color(1.0, 0.58, 0.12, 1.0) if on else Color(0.28, 0.20, 0.15, 1.0)
+
+	# Sync Analog Knobs
+	for key in ["intensity", "focus", "scale_illum", "trigger_level", "horiz_pos_div", "vert_pos_div", "persistence"]:
+		if _knobs_2d.has(key):
+			_knobs_2d[key].value = float(SimState.analog_config[key])
+
+	# Sync Discrete Stepped Knobs (VOLTS/DIV and TIME/DIV)
+	if _knobs_2d.has("volts_per_div"):
+		var v_cur: float = float(SimState.view_config["volts_per_div"])
+		var best_v := 2
+		for i in range(VOLTS_STEPS.size()):
+			if absf(VOLTS_STEPS[i] - v_cur) < 1e-4:
+				best_v = i
+				break
+		_knobs_2d["volts_per_div"].value = float(best_v)
+
+	if _knobs_2d.has("time_per_div"):
+		var t_cur: float = float(SimState.view_config["time_per_div"])
+		var best_t := 2
+		for i in range(TIME_STEPS.size()):
+			if absf(TIME_STEPS[i] - t_cur) < 1e-6:
+				best_t = i
+				break
+		_knobs_2d["time_per_div"].value = float(best_t)
+
+	# Sync OptionButtons
+	if _slope_opt != null:
+		_slope_opt.selected = int(SimState.analog_config["trigger_slope"])
+	if _coup_opt != null:
+		_coup_opt.selected = int(SimState.analog_config["coupling"])
+	if _probe_opt != null:
+		_probe_opt.selected = 1 if float(SimState.analog_config["probe_attenuation"]) > 1.5 else 0
+	if _wf_opt != null:
+		_wf_opt.selected = int(SimState.signal_params["waveform"])
+
+	# Sync Bottom Function Generator Sliders
+	for s_key in _gen_sliders.keys():
+		var entry: Dictionary = _gen_sliders[s_key]
+		var val: float = float(SimState.signal_params[s_key])
+		var slider: HSlider = entry["slider"]
+		var lbl: Label = entry["label"]
+		slider.set_value_no_signal(val)
+		lbl.text = "%.1f" % val
+
+	_syncing_ui = false
 
 func _build_workspace() -> void:
 	var bench := ColorRect.new()
@@ -75,6 +142,14 @@ func _build_workspace() -> void:
 	app_title.add_theme_color_override("font_color", Color(0.35, 0.96, 0.72, 1.0))
 	app_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nav_bar.add_child(app_title)
+
+	var mode_opt := OptionButton.new()
+	mode_opt.add_item("Mode: Normal Sandbox")
+	mode_opt.add_item("Mode: Calibration Test (Scrambled)")
+	mode_opt.item_selected.connect(func(idx: int) -> void:
+		SimState.set_lab_mode("CALIBRATION" if idx == 1 else "NORMAL")
+	)
+	nav_bar.add_child(mode_opt)
 
 	_btn_3d_mode = Button.new()
 	_btn_3d_mode.text = " [1] 3D Lab Workbench "
@@ -185,15 +260,15 @@ func _build_workspace() -> void:
 	pwr_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pwr_box.add_child(pwr_lbl)
 
-	var pwr_btn := Button.new()
-	pwr_btn.text = "ON / OFF"
-	pwr_btn.toggle_mode = true
-	pwr_btn.button_pressed = true
-	pwr_btn.toggled.connect(func(on: bool) -> void:
-		SimState.set_view_param("power_on", on)
-		_power_led.color = Color(1.0, 0.58, 0.12, 1.0) if on else Color(0.28, 0.20, 0.15, 1.0)
+	_pwr_btn = Button.new()
+	_pwr_btn.text = "ON / OFF"
+	_pwr_btn.toggle_mode = true
+	_pwr_btn.button_pressed = true
+	_pwr_btn.toggled.connect(func(on: bool) -> void:
+		if not _syncing_ui:
+			SimState.set_view_param("power_on", on)
 	)
-	pwr_box.add_child(pwr_btn)
+	pwr_box.add_child(_pwr_btn)
 
 	_power_led = ColorRect.new()
 	_power_led.custom_minimum_size = Vector2(14, 14)
@@ -201,14 +276,17 @@ func _build_workspace() -> void:
 	_power_led.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	pwr_box.add_child(_power_led)
 
-	_add_knob(strip_hbox, "INTENSITY", 0.1, 1.0, 0.05, 0.85, Color(0.22, 0.21, 0.20, 1.0), [], func(v: float) -> void:
-		SimState.set_analog_param("intensity", v)
+	_add_knob(strip_hbox, "intensity", "INTENSITY", 0.1, 1.0, 0.05, 0.85, Color(0.22, 0.21, 0.20, 1.0), [], func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_analog_param("intensity", v)
 	)
-	_add_knob(strip_hbox, "FOCUS", 0.1, 1.0, 0.05, 0.88, Color(0.22, 0.21, 0.20, 1.0), [], func(v: float) -> void:
-		SimState.set_analog_param("focus", v)
+	_add_knob(strip_hbox, "focus", "FOCUS", 0.1, 1.0, 0.05, 0.88, Color(0.22, 0.21, 0.20, 1.0), [], func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_analog_param("focus", v)
 	)
-	_add_knob(strip_hbox, "SCALE ILLUM", 0.0, 1.0, 0.05, 0.65, Color(0.22, 0.21, 0.20, 1.0), [], func(v: float) -> void:
-		SimState.set_analog_param("scale_illum", v)
+	_add_knob(strip_hbox, "scale_illum", "SCALE ILLUM", 0.0, 1.0, 0.05, 0.65, Color(0.22, 0.21, 0.20, 1.0), [], func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_analog_param("scale_illum", v)
 	)
 
 	var right_col := VBoxContainer.new()
@@ -226,8 +304,9 @@ func _build_workspace() -> void:
 	trig_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	trig_box.add_child(trig_row)
 
-	_add_knob(trig_row, "LEVEL", -4.0, 4.0, 0.1, 0.0, Color(0.76, 0.72, 0.64, 1.0), [], func(v: float) -> void:
-		SimState.set_analog_param("trigger_level", v)
+	_add_knob(trig_row, "trigger_level", "LEVEL", -4.0, 4.0, 0.1, 0.0, Color(0.76, 0.72, 0.64, 1.0), [], func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_analog_param("trigger_level", v)
 	)
 
 	var slope_col := VBoxContainer.new()
@@ -235,25 +314,28 @@ func _build_workspace() -> void:
 	slope_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	trig_row.add_child(slope_col)
 	slope_col.add_child(_silk_label("SLOPE", 10))
-	var slope_opt := OptionButton.new()
-	slope_opt.add_item("+ RISING")
-	slope_opt.add_item("- FALLING")
-	slope_opt.item_selected.connect(func(idx: int) -> void:
-		SimState.set_analog_param("trigger_slope", idx)
+	_slope_opt = OptionButton.new()
+	_slope_opt.add_item("+ RISING")
+	_slope_opt.add_item("- FALLING")
+	_slope_opt.item_selected.connect(func(idx: int) -> void:
+		if not _syncing_ui:
+			SimState.set_analog_param("trigger_slope", idx)
 	)
-	slope_col.add_child(slope_opt)
+	slope_col.add_child(_slope_opt)
 
 	var time_box := _make_section_box(top_controls, "HORIZONTAL  /  TIME/DIV")
 	var time_row := HBoxContainer.new()
 	time_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	time_box.add_child(time_row)
 
-	_add_knob(time_row, "TIME/DIV", 0.0, float(TIME_STEPS.size() - 1), 1.0, 2.0, Color(0.22, 0.21, 0.20, 1.0), TIME_LABELS, func(v: float) -> void:
-		var idx := clampi(int(round(v)), 0, TIME_STEPS.size() - 1)
-		SimState.set_view_param("time_per_div", TIME_STEPS[idx])
+	_add_knob(time_row, "time_per_div", "TIME/DIV", 0.0, float(TIME_STEPS.size() - 1), 1.0, 2.0, Color(0.22, 0.21, 0.20, 1.0), TIME_LABELS, func(v: float) -> void:
+		if not _syncing_ui:
+			var idx := clampi(int(round(v)), 0, TIME_STEPS.size() - 1)
+			SimState.set_view_param("time_per_div", TIME_STEPS[idx])
 	)
-	_add_knob(time_row, "POSITION", -5.0, 5.0, 0.2, 0.0, Color(0.76, 0.72, 0.64, 1.0), [], func(v: float) -> void:
-		SimState.set_analog_param("horiz_pos_div", v)
+	_add_knob(time_row, "horiz_pos_div", "POSITION", -5.0, 5.0, 0.2, 0.0, Color(0.76, 0.72, 0.64, 1.0), [], func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_analog_param("horiz_pos_div", v)
 	)
 
 	var vert_controls := HBoxContainer.new()
@@ -266,12 +348,14 @@ func _build_workspace() -> void:
 	ch1_knobs.alignment = BoxContainer.ALIGNMENT_CENTER
 	ch1_box.add_child(ch1_knobs)
 
-	_add_knob(ch1_knobs, "POSITION", -4.0, 4.0, 0.2, 0.0, Color(0.22, 0.21, 0.20, 1.0), [], func(v: float) -> void:
-		SimState.set_analog_param("vert_pos_div", v)
+	_add_knob(ch1_knobs, "vert_pos_div", "POSITION", -4.0, 4.0, 0.2, 0.0, Color(0.22, 0.21, 0.20, 1.0), [], func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_analog_param("vert_pos_div", v)
 	)
-	_add_knob(ch1_knobs, "VOLTS/DIV", 0.0, float(VOLTS_STEPS.size() - 1), 1.0, 2.0, Color(0.68, 0.22, 0.20, 1.0), VOLTS_LABELS, func(v: float) -> void:
-		var idx := clampi(int(round(v)), 0, VOLTS_STEPS.size() - 1)
-		SimState.set_view_param("volts_per_div", VOLTS_STEPS[idx])
+	_add_knob(ch1_knobs, "volts_per_div", "VOLTS/DIV", 0.0, float(VOLTS_STEPS.size() - 1), 1.0, 2.0, Color(0.68, 0.22, 0.20, 1.0), VOLTS_LABELS, func(v: float) -> void:
+		if not _syncing_ui:
+			var idx := clampi(int(round(v)), 0, VOLTS_STEPS.size() - 1)
+			SimState.set_view_param("volts_per_div", VOLTS_STEPS[idx])
 	)
 
 	var coup_row := HBoxContainer.new()
@@ -279,22 +363,24 @@ func _build_workspace() -> void:
 	coup_row.add_theme_constant_override("separation", 6)
 	ch1_box.add_child(coup_row)
 	coup_row.add_child(_silk_label("INPUT COUPLING:", 10))
-	var coup_opt := OptionButton.new()
-	coup_opt.add_item("DC")
-	coup_opt.add_item("AC")
-	coup_opt.add_item("GND")
-	coup_opt.item_selected.connect(func(idx: int) -> void:
-		SimState.set_analog_param("coupling", idx)
+	_coup_opt = OptionButton.new()
+	_coup_opt.add_item("DC")
+	_coup_opt.add_item("AC")
+	_coup_opt.add_item("GND")
+	_coup_opt.item_selected.connect(func(idx: int) -> void:
+		if not _syncing_ui:
+			SimState.set_analog_param("coupling", idx)
 	)
-	coup_row.add_child(coup_opt)
+	coup_row.add_child(_coup_opt)
 
 	var aux_box := _make_section_box(vert_controls, "PROBE & PHOSPHOR")
 	var aux_knobs := HBoxContainer.new()
 	aux_knobs.alignment = BoxContainer.ALIGNMENT_CENTER
 	aux_box.add_child(aux_knobs)
 
-	_add_knob(aux_knobs, "PERSISTENCE", 0.0, 0.95, 0.05, 0.30, Color(0.76, 0.72, 0.64, 1.0), [], func(v: float) -> void:
-		SimState.set_analog_param("persistence", v)
+	_add_knob(aux_knobs, "persistence", "PERSISTENCE", 0.0, 0.95, 0.05, 0.30, Color(0.76, 0.72, 0.64, 1.0), [], func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_analog_param("persistence", v)
 	)
 
 	var probe_col := VBoxContainer.new()
@@ -302,13 +388,14 @@ func _build_workspace() -> void:
 	probe_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	aux_knobs.add_child(probe_col)
 	probe_col.add_child(_silk_label("PROBE", 10))
-	var probe_opt := OptionButton.new()
-	probe_opt.add_item("1x")
-	probe_opt.add_item("10x")
-	probe_opt.item_selected.connect(func(idx: int) -> void:
-		SimState.set_analog_param("probe_attenuation", 10.0 if idx == 1 else 1.0)
+	_probe_opt = OptionButton.new()
+	_probe_opt.add_item("1x")
+	_probe_opt.add_item("10x")
+	_probe_opt.item_selected.connect(func(idx: int) -> void:
+		if not _syncing_ui:
+			SimState.set_analog_param("probe_attenuation", 10.0 if idx == 1 else 1.0)
 	)
-	probe_col.add_child(probe_opt)
+	probe_col.add_child(_probe_opt)
 
 	# ==================== VIEW 3: ANALOG INTERNAL ARCHITECTURE EXPLORER ====================
 	_circuit_view = AnalogCircuitExplorer.new()
@@ -333,30 +420,43 @@ func _build_workspace() -> void:
 	gen_pad.add_child(gen_hbox)
 
 	var gen_title := Label.new()
-	gen_title.text = "BENCH FUNCTION GENERATOR:"
+	gen_title.text = "SIGLENT SDG1032X:"
 	gen_title.add_theme_font_size_override("font_size", 12)
 	gen_title.add_theme_color_override("font_color", Color(0.45, 0.90, 0.75, 1.0))
 	gen_hbox.add_child(gen_title)
 
-	var wf_opt := OptionButton.new()
-	for wf_name in SignalGenerator.WAVEFORM_NAMES:
-		wf_opt.add_item(wf_name)
-	wf_opt.item_selected.connect(func(idx: int) -> void:
-		SimState.set_signal_param("waveform", idx)
+	var fg_ch_opt := OptionButton.new()
+	fg_ch_opt.add_item("CH1 Out")
+	fg_ch_opt.add_item("CH2 Out")
+	fg_ch_opt.item_selected.connect(func(idx: int) -> void:
+		SimState.select_fg_channel(idx + 1)
 	)
-	gen_hbox.add_child(wf_opt)
+	gen_hbox.add_child(fg_ch_opt)
 
-	_add_compact_slider(gen_hbox, "Amp (V)", 0.2, 8.0, 0.2, 2.0, func(v: float) -> void:
-		SimState.set_signal_param("amplitude", v)
+	_wf_opt = OptionButton.new()
+	for wf_name in SignalGenerator.WAVEFORM_NAMES:
+		_wf_opt.add_item(wf_name)
+	_wf_opt.item_selected.connect(func(idx: int) -> void:
+		if not _syncing_ui:
+			SimState.set_signal_param("waveform", idx)
 	)
-	_add_compact_slider(gen_hbox, "Freq (Hz)", 100.0, 5000.0, 100.0, 1000.0, func(v: float) -> void:
-		SimState.set_signal_param("frequency", v)
+	gen_hbox.add_child(_wf_opt)
+
+	_add_compact_slider(gen_hbox, "amplitude", "Amp (V)", 0.2, 8.0, 0.2, 2.0, func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_signal_param("amplitude", v)
 	)
-	_add_compact_slider(gen_hbox, "DC Off (V)", -3.0, 3.0, 0.2, 0.0, func(v: float) -> void:
-		SimState.set_signal_param("dc_offset", v)
+	_add_compact_slider(gen_hbox, "frequency", "Freq (Hz)", 100.0, 5000.0, 100.0, 1000.0, func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_signal_param("frequency", v)
 	)
-	_add_compact_slider(gen_hbox, "Noise (V)", 0.0, 0.6, 0.05, 0.0, func(v: float) -> void:
-		SimState.set_signal_param("noise_rms", v)
+	_add_compact_slider(gen_hbox, "dc_offset", "DC Off (V)", -3.0, 3.0, 0.2, 0.0, func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_signal_param("dc_offset", v)
+	)
+	_add_compact_slider(gen_hbox, "noise_rms", "Noise (V)", 0.0, 0.6, 0.05, 0.0, func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_signal_param("noise_rms", v)
 	)
 
 	_animate_check = CheckButton.new()
@@ -393,7 +493,7 @@ func _silk_label(text: String, font_sz: int) -> Label:
 	lbl.add_theme_color_override("font_color", SILKSCREEN_INK)
 	return lbl
 
-func _add_knob(parent: Control, label_txt: String, min_v: float, max_v: float, step_v: float, init_v: float, cap_col: Color, labels: Array[String], cb: Callable) -> void:
+func _add_knob(parent: Control, param_key: String, label_txt: String, min_v: float, max_v: float, step_v: float, init_v: float, cap_col: Color, labels: Array[String], cb: Callable) -> void:
 	var knob := RotaryKnob.new()
 	knob.label_text = label_txt
 	knob.min_value = min_v
@@ -405,8 +505,9 @@ func _add_knob(parent: Control, label_txt: String, min_v: float, max_v: float, s
 	knob.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	knob.value_changed.connect(cb)
 	parent.add_child(knob)
+	_knobs_2d[param_key] = knob
 
-func _add_compact_slider(parent: Control, name_txt: String, min_v: float, max_v: float, step_v: float, init_v: float, cb: Callable) -> void:
+func _add_compact_slider(parent: Control, param_key: String, name_txt: String, min_v: float, max_v: float, step_v: float, init_v: float, cb: Callable) -> void:
 	var box := HBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_theme_constant_override("separation", 4)
@@ -434,3 +535,4 @@ func _add_compact_slider(parent: Control, name_txt: String, min_v: float, max_v:
 		cb.call(v)
 	)
 	box.add_child(s)
+	_gen_sliders[param_key] = {"slider": s, "label": val_lbl}
