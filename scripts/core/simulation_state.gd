@@ -7,6 +7,7 @@ var lab_mode := "NORMAL" # "NORMAL" or "CALIBRATION"
 var fg_selected_channel := 1 # 1 or 2 on Siglent SDG1032X
 var breadboard_model_idx := 0
 var board_is_pcb := false
+var lab_theme_idx := 0
 var active_challenge_running := false
 var active_mission_data := {}
 var active_time_remaining := 0.0
@@ -93,6 +94,10 @@ func _ready() -> void:
 
 func select_fg_channel(ch: int) -> void:
 	fg_selected_channel = 1 if ch != 2 else 2
+	state_updated.emit()
+
+func set_lab_theme(idx: int) -> void:
+	lab_theme_idx = clampi(idx, 0, LabEnvironmentBuilder.LAB_THEMES.size() - 1)
 	state_updated.emit()
 
 func set_board_is_pcb(is_pcb: bool) -> void:

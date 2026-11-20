@@ -16,6 +16,9 @@ var _main_vp: SubViewport
 var _crt_vp: SubViewport
 var _camera: Camera3D
 var _scope_data := {}
+var _env_data := {}
+var _world_env: WorldEnvironment
+var _key_light: DirectionalLight3D
 var _hover_ring: MeshInstance3D
 var _ring_mat: StandardMaterial3D
 
@@ -124,15 +127,15 @@ func _build_3d_scene() -> void:
 	_main_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_main_vp)
 
-	var world_env := WorldEnvironment.new()
+	_world_env = WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.07, 0.08, 0.10, 1.0)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.62, 0.65, 0.69, 1.0)
 	env.ambient_light_energy = 0.95
-	world_env.environment = env
-	_main_vp.add_child(world_env)
+	_world_env.environment = env
+	_main_vp.add_child(_world_env)
 
 	var key_light := DirectionalLight3D.new()
 	key_light.look_at_from_position(Vector3(0.4, 0.9, 0.85), Vector3(0.0, 0.1, 0.15), Vector3.UP)
@@ -145,7 +148,7 @@ func _build_3d_scene() -> void:
 	fill_light.omni_range = 2.5
 	_main_vp.add_child(fill_light)
 
-	LabEnvironmentBuilder.build_studio_workbench(_main_vp)
+	_env_data = LabEnvironmentBuilder.build_studio_workbench(_main_vp)
 
 	_scope_data = VP5231A3DBuilder.build_oscilloscope(_main_vp, _crt_vp.get_texture())
 
@@ -687,6 +690,7 @@ func _sync_visuals() -> void:
 	cap.position.z = 0.0015 if is_on else 0.0035
 
 	Breadboard3DBuilder.set_board_style(_scope_data.get("breadboard", {}), SimState.board_is_pcb)
+	LabEnvironmentBuilder.apply_theme(_env_data, _world_env, _key_light, SimState.lab_theme_idx)
 	var snaps: Dictionary = _scope_data["snap_targets"]
 	if _dragging_probe_kind == "":
 		VP5231A3DBuilder.update_single_probe(

@@ -167,6 +167,14 @@ func _build_workspace() -> void:
 	)
 	nav_bar.add_child(mode_opt)
 
+	var theme_opt := OptionButton.new()
+	for t_cfg in LabEnvironmentBuilder.LAB_THEMES:
+		theme_opt.add_item(t_cfg["name"])
+	theme_opt.item_selected.connect(func(idx: int) -> void:
+		SimState.set_lab_theme(idx)
+	)
+	nav_bar.add_child(theme_opt)
+
 	_btn_3d_mode = Button.new()
 	_btn_3d_mode.text = " [1] 3D Lab Workbench "
 	_btn_3d_mode.toggle_mode = true
