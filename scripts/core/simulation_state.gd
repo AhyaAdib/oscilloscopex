@@ -11,6 +11,8 @@ var active_challenge_running := false
 var active_mission_data := {}
 var active_time_remaining := 0.0
 var last_mission_report := ""
+var submission_attempts := 0
+var failed_attempts := 0
 var breadboard_config: Dictionary = Breadboard3DBuilder.CIRCUIT_MODELS[0].duplicate(true)
 
 var fg_channels := {

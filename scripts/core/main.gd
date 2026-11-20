@@ -492,6 +492,14 @@ func _build_workspace() -> void:
 	)
 	gen_hbox.add_child(board_style_opt)
 
+	SimState.state_updated.connect(func() -> void:
+		if bb_opt.selected != SimState.breadboard_model_idx:
+			bb_opt.select(SimState.breadboard_model_idx)
+		var want_pcb := 1 if SimState.board_is_pcb else 0
+		if board_style_opt.selected != want_pcb:
+			board_style_opt.select(want_pcb)
+	)
+
 	_wf_opt = OptionButton.new()
 	for wf_name in SignalGenerator.WAVEFORM_NAMES:
 		_wf_opt.add_item(wf_name)

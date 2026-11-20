@@ -272,6 +272,8 @@ func _on_start_mission() -> void:
 	SimState.active_mission_data = active_mission
 	SimState.active_time_remaining = time_remaining
 	SimState.last_mission_report = ""
+	SimState.submission_attempts = 0
+	SimState.failed_attempts = 0
 	SimState.set_lab_mode("CALIBRATION")
 	if active_mission.get("randomize_fg", false):
 		SimState.select_fg_channel(1)
@@ -283,12 +285,16 @@ func _on_start_mission() -> void:
 	_refresh_hardware_status()
 
 func _on_submit_pressed() -> void:
-	is_running = false
-	SimState.active_challenge_running = false
-	_update_timer_display()
 	var res := ChallengeManager.evaluate_submission(
 		active_mission, _in_vpp.value, _in_freq.value, _in_offset.value, time_remaining
 	)
+	SimState.submission_attempts += 1
+	if not res["passed"]:
+		SimState.failed_attempts += 1
+	if res["passed"] or time_remaining <= 0.0:
+		is_running = false
+		SimState.active_challenge_running = false
+	_update_timer_display()
 	var verdict := "[color=#4ade80][b]PASS — LAB PRACTICUM VERIFIED![/b][/color]" if res["passed"] else "[color=#f87171][b]NEEDS RE-CALIBRATION / RE-MEASUREMENT[/b][/color]"
 	var lines: Array[String] = [
 		"%s   |   [b]Score: %d / 100[/b] (Cal: %d/50, Reading: %d/50)" % [verdict, res["total_score"], res["cal_score"], res["read_score"]],
@@ -303,7 +309,10 @@ func _on_submit_pressed() -> void:
 		"• Offset: submitted [b]%.2f V[/b] vs true [b]%.2f V[/b] (err %.2f V) — %s" % [_in_offset.value, res["true_offset"], res["off_err_v"], "PASS" if res["off_ok"] else "FAIL"]
 	]
 	_last_summary = "Score: %d/100 (%s)" % [res["total_score"], "PASS" if res["passed"] else "RETRY"]
-	SimState.last_mission_report = "Score: %d/100 (%s) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "RETRY", res["true_vpp"], res["true_freq"], res["true_offset"]]
+	if res["passed"] or time_remaining <= 0.0:
+		SimState.last_mission_report = "FINAL: %d/100 (%s) | Attempts: %d (Fails: %d) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "TIME UP", SimState.submission_attempts, SimState.failed_attempts, res["true_vpp"], res["true_freq"], res["true_offset"]]
+	else:
+		SimState.last_mission_report = "Score: %d/100 — KEEP GOING! | Attempts: %d (Fails: %d)\nHint: Route:%s | Comp:%s | Trig:%s | Vpp:%s | Freq:%s" % [res["total_score"], SimState.submission_attempts, SimState.failed_attempts, "OK" if res["routing_ok"] else "NO", "OK" if res["comp_ok"] else "OFF", "OK" if res["trig_ok"] else "NO", "OK" if res["vpp_ok"] else "ERR", "OK" if res["freq_ok"] else "ERR"]
 	SimState.last_mission_report = "Score: %d/100 (%s) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "RETRY", res["true_vpp"], res["true_freq"], res["true_offset"]]
 	_result_lbl.text = "\n".join(lines)
 

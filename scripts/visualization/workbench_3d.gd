@@ -303,8 +303,14 @@ func _build_overlay_hud() -> void:
 	m_sub_btn.text = "✓ SUBMIT READING & CALIBRATION"
 	m_sub_btn.pressed.connect(func() -> void:
 		var res := ChallengeManager.evaluate_submission(SimState.active_mission_data, _m_vpp_spin.value, _m_freq_spin.value, _m_off_spin.value, SimState.active_time_remaining)
-		SimState.active_challenge_running = false
-		SimState.last_mission_report = "Score: %d/100 (%s) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "RETRY", res["true_vpp"], res["true_freq"], res["true_offset"]]
+		SimState.submission_attempts += 1
+		if not res["passed"]:
+			SimState.failed_attempts += 1
+		if res["passed"] or SimState.active_time_remaining <= 0.0:
+			SimState.active_challenge_running = false
+			SimState.last_mission_report = "FINAL: %d/100 (%s) | Attempts: %d (Fails: %d) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "TIME UP", SimState.submission_attempts, SimState.failed_attempts, res["true_vpp"], res["true_freq"], res["true_offset"]]
+		else:
+			SimState.last_mission_report = "Score: %d/100 — KEEP GOING! | Attempts: %d (Fails: %d)\nHint: Route:%s | Comp:%s | Trig:%s | Vpp:%s | Freq:%s" % [res["total_score"], SimState.submission_attempts, SimState.failed_attempts, "OK" if res["routing_ok"] else "NO", "OK" if res["comp_ok"] else "OFF", "OK" if res["trig_ok"] else "NO", "OK" if res["vpp_ok"] else "ERR", "OK" if res["freq_ok"] else "ERR"]
 		_m_res_lbl.text = SimState.last_mission_report
 	)
 	m_vb.add_child(m_sub_btn)
