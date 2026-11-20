@@ -145,27 +145,7 @@ func _build_3d_scene() -> void:
 	fill_light.omni_range = 2.5
 	_main_vp.add_child(fill_light)
 
-	var desk_mesh := MeshInstance3D.new()
-	var desk_box := BoxMesh.new()
-	desk_box.size = Vector3(1.55, 0.04, 0.95)
-	desk_mesh.mesh = desk_box
-	desk_mesh.position = Vector3(0.0, -0.02, 0.05)
-	var desk_mat := StandardMaterial3D.new()
-	desk_mat.albedo_color = Color(0.22, 0.20, 0.18, 1.0)
-	desk_mat.roughness = 0.75
-	desk_mesh.material_override = desk_mat
-	_main_vp.add_child(desk_mesh)
-
-	var esd_mesh := MeshInstance3D.new()
-	var esd_box := BoxMesh.new()
-	esd_box.size = Vector3(1.10, 0.003, 0.65)
-	esd_mesh.mesh = esd_box
-	esd_mesh.position = Vector3(0.02, 0.0015, 0.10)
-	var esd_mat := StandardMaterial3D.new()
-	esd_mat.albedo_color = Color(0.11, 0.24, 0.32, 1.0)
-	esd_mat.roughness = 0.65
-	esd_mesh.material_override = esd_mat
-	_main_vp.add_child(esd_mesh)
+	LabEnvironmentBuilder.build_studio_workbench(_main_vp)
 
 	_scope_data = VP5231A3DBuilder.build_oscilloscope(_main_vp, _crt_vp.get_texture())
 
