@@ -1,0 +1,6 @@
+.godot/
+*.import
+exports/*
+!exports/.gitkeep
+*.log
+*.tmp
