@@ -220,12 +220,15 @@ static func _build_p6100_probe(parent: Node, idx: int, label_prefix: String, rin
 	_add_cyl(bnc_plug, "ColorRingBNC", 0.0079, 0.003, Vector3(0, 0, 0.032), Vector3(PI * 0.5, 0, 0), id_ring_mat)
 	_add_cyl(bnc_plug, "StrainBoot", 0.0048, 0.022, Vector3(0, 0, 0.044), Vector3(PI * 0.5, 0, 0), dark_boot_mat)
 
+	var bnc_grab := Node3D.new()
+	bnc_grab.position = Vector3(0, 0, 0.022)
+	bnc_plug.add_child(bnc_grab)
 	interactables.append({
 		"type": "draggable_bnc",
 		"probe_idx": idx,
 		"title": "%s BNC Plug (Drag to Scope CH1 or CH2 INPUT)" % label_prefix,
-		"focus_node": bnc_plug,
-		"hit_radius": 0.018,
+		"focus_node": bnc_grab,
+		"hit_radius": 0.026,
 		"ring_radius": 0.016
 	})
 
@@ -245,12 +248,15 @@ static func _build_p6100_probe(parent: Node, idx: int, label_prefix: String, rin
 	_add_cyl(probe_tip, "GndWire", 0.0014, 0.038, Vector3(0.016, -0.006, 0.044), Vector3(PI * 0.45, 0.42, 0), dark_boot_mat)
 	_add_box(probe_tip, "AlligatorClip", Vector3(0.005, 0.005, 0.018), Vector3(0.026, -0.009, 0.064), dark_boot_mat)
 
+	var tip_grab := Node3D.new()
+	tip_grab.position = Vector3(0, 0, 0.045)
+	probe_tip.add_child(tip_grab)
 	interactables.append({
 		"type": "draggable_tip",
 		"probe_idx": idx,
 		"title": "%s Hook Tip (Drag to FG CH1/CH2 OUT or CAL 1Vp-p)" % label_prefix,
-		"focus_node": probe_tip,
-		"hit_radius": 0.022,
+		"focus_node": tip_grab,
+		"hit_radius": 0.032,
 		"ring_radius": 0.018
 	})
 

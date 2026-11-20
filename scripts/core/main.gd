@@ -50,9 +50,15 @@ func _make_panel_style(bg: Color, border: Color, border_w := 2, radius := 4) -> 
 	return sb
 
 func _set_active_mode(mode_idx: int) -> void:
-	_workbench_3d.visible = (mode_idx == 0)
-	_instrument_view.visible = (mode_idx == 1)
-	_circuit_view.visible = (mode_idx == 2)
+	var views: Array[Control] = [_workbench_3d, _instrument_view, _circuit_view]
+	for i in range(views.size()):
+		var v := views[i]
+		var active := (i == mode_idx)
+		v.visible = active
+		if active:
+			v.modulate.a = 0.0
+			var tw := create_tween()
+			tw.tween_property(v, "modulate:a", 1.0, 0.18).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_btn_3d_mode.button_pressed = (mode_idx == 0)
 	_btn_inst_mode.button_pressed = (mode_idx == 1)
 	_btn_arch_mode.button_pressed = (mode_idx == 2)

@@ -16,23 +16,37 @@ var _crt_vp: SubViewport
 var _camera: Camera3D
 var _scope_data := {}
 var _hover_ring: MeshInstance3D
+var _ring_mat: StandardMaterial3D
 
 var _hovered_ctrl := {}
 var _active_knob := {}
 var _dragging_probe_kind := "" # "bnc" or "tip"
 var _dragging_probe_idx := 1
+var _drag_plane := Plane(Vector3.BACK, 0.20)
+var _drag_grab_offset := Vector3.ZERO
+var _drag_current_world := Vector3.ZERO
+var _drag_target_world := Vector3.ZERO
 var _drag_start_y := 0.0
 var _drag_start_val := 0.0
 
+# Smooth damped camera state
 var _orbiting := false
+var _panning := false
 var _yaw := 0.0
 var _pitch := -0.22
 var _dist := 0.50
 var _cam_target := Vector3(0.02, 0.09, 0.14)
 
+var _goal_yaw := 0.0
+var _goal_pitch := -0.22
+var _goal_dist := 0.50
+var _goal_target := Vector3(0.02, 0.09, 0.14)
+
+var _pulse_time := 0.0
 var _hud_label: Label
 var _checklist_panel: PanelContainer
 var _checklist_lbl: Label
+var _preset_buttons: Array[Button] = []
 
 func _ready() -> void:
 	stretch = true
@@ -44,6 +58,32 @@ func _ready() -> void:
 	if has_node("/root/SimState"):
 		SimState.state_updated.connect(_sync_visuals)
 	_sync_visuals()
+
+func _process(delta: float) -> void:
+	_pulse_time += delta
+
+	# 1. Smoothly glide camera toward target preset / orbit / pan / zoom
+	var cam_blend := 1.0 - exp(-11.0 * delta)
+	_yaw = lerpf(_yaw, _goal_yaw, cam_blend)
+	_pitch = lerpf(_pitch, _goal_pitch, cam_blend)
+	_dist = lerpf(_dist, _goal_dist, cam_blend)
+	_cam_target = _cam_target.lerp(_goal_target, cam_blend)
+	_update_camera_transform()
+
+	# 2. Smoothly follow cursor while dragging a probe
+	if _dragging_probe_kind != "":
+		var probe_blend := 1.0 - exp(-26.0 * delta)
+		_drag_current_world = _drag_current_world.lerp(_drag_target_world, probe_blend)
+		var p_key := "probe1" if _dragging_probe_idx == 1 else "probe2"
+		var p_data: Dictionary = _scope_data[p_key]
+		var snaps: Dictionary = _scope_data.get("snap_targets", {})
+		var cur_bnc := str(SimState.analog_config.get(p_key + "_bnc", "UNPLUGGED"))
+		var cur_tip := str(SimState.analog_config.get(p_key + "_tip", "FLOATING"))
+		VP5231A3DBuilder.update_single_probe(p_data, snaps, cur_bnc, cur_tip, _dragging_probe_kind, _drag_current_world)
+
+	# 3. Subtle pulsing glow on the active cyan-blue selection ring
+	if _hover_ring != null and _hover_ring.visible and _ring_mat != null:
+		_ring_mat.emission_energy_multiplier = 2.4 + sin(_pulse_time * 6.5) * 0.8
 
 func _build_3d_scene() -> void:
 	_crt_vp = SubViewport.new()
@@ -82,7 +122,6 @@ func _build_3d_scene() -> void:
 	fill_light.omni_range = 2.5
 	_main_vp.add_child(fill_light)
 
-	# Workbench Desk + Blue ESD Anti-Static Mat
 	var desk_mesh := MeshInstance3D.new()
 	var desk_box := BoxMesh.new()
 	desk_box.size = Vector3(1.55, 0.04, 0.95)
@@ -107,19 +146,18 @@ func _build_3d_scene() -> void:
 
 	_scope_data = VP5231A3DBuilder.build_oscilloscope(_main_vp, _crt_vp.get_texture())
 
-	# Glowing Cyan-Blue 3D Hover Selection Ring
 	_hover_ring = MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.80
 	torus.outer_radius = 1.0
 	_hover_ring.mesh = torus
-	var ring_mat := StandardMaterial3D.new()
-	ring_mat.albedo_color = Color(0.22, 0.78, 1.0, 1.0)
-	ring_mat.emission_enabled = true
-	ring_mat.emission = Color(0.25, 0.82, 1.0, 1.0)
-	ring_mat.emission_energy_multiplier = 2.8
-	ring_mat.no_depth_test = true
-	_hover_ring.material_override = ring_mat
+	_ring_mat = StandardMaterial3D.new()
+	_ring_mat.albedo_color = Color(0.22, 0.78, 1.0, 1.0)
+	_ring_mat.emission_enabled = true
+	_ring_mat.emission = Color(0.25, 0.82, 1.0, 1.0)
+	_ring_mat.emission_energy_multiplier = 2.8
+	_ring_mat.no_depth_test = true
+	_hover_ring.material_override = _ring_mat
 	_hover_ring.rotation.x = PI * 0.5
 	_hover_ring.visible = false
 	_main_vp.add_child(_hover_ring)
@@ -129,7 +167,7 @@ func _build_3d_scene() -> void:
 	_camera.near = 0.02
 	_camera.far = 10.0
 	_main_vp.add_child(_camera)
-	_apply_camera_preset(0)
+	_apply_camera_preset(0, true)
 
 func _build_overlay_hud() -> void:
 	var top_overlay := MarginContainer.new()
@@ -150,7 +188,7 @@ func _build_overlay_hud() -> void:
 	vbox.add_child(hbox)
 
 	_hud_label = Label.new()
-	_hud_label.text = "3D BENCH: Hover knob/switch/probe (blue ring) | Drag/Wheel to turn | Drag Probe Tip or BNC to plug"
+	_hud_label.text = "Left-Drag: Knob/Probe | Ctrl+Left-Drag or Mid-Drag: Pan | Right-Drag: Orbit | Wheel: Zoom/Turn"
 	_hud_label.add_theme_font_size_override("font_size", 13)
 	_hud_label.add_theme_color_override("font_color", Color(0.45, 0.96, 0.78, 1.0))
 	_hud_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -163,11 +201,13 @@ func _build_overlay_hud() -> void:
 	for i in range(CAMERA_PRESETS.size()):
 		var btn := Button.new()
 		btn.text = CAMERA_PRESETS[i]["name"]
+		btn.toggle_mode = true
+		btn.button_pressed = (i == 0)
 		var idx := i
-		btn.pressed.connect(func() -> void: _apply_camera_preset(idx))
+		btn.pressed.connect(func() -> void: _apply_camera_preset(idx, false))
 		preset_bar.add_child(btn)
+		_preset_buttons.append(btn)
 
-	# Calibration Lab Practicum Checklist Panel (visible in Calibration Lab Mode)
 	_checklist_panel = PanelContainer.new()
 	_checklist_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_checklist_panel.visible = false
@@ -191,16 +231,26 @@ func _build_overlay_hud() -> void:
 	_checklist_lbl.add_theme_color_override("font_color", Color(0.95, 0.92, 0.82, 1.0))
 	margin.add_child(_checklist_lbl)
 
-func _apply_camera_preset(idx: int) -> void:
-	var preset: Dictionary = CAMERA_PRESETS[clampi(idx, 0, CAMERA_PRESETS.size() - 1)]
+func _apply_camera_preset(idx: int, instant := false) -> void:
+	var clamped := clampi(idx, 0, CAMERA_PRESETS.size() - 1)
+	for i in range(_preset_buttons.size()):
+		_preset_buttons[i].set_pressed_no_signal(i == clamped)
+
+	var preset: Dictionary = CAMERA_PRESETS[clamped]
 	var p: Vector3 = preset["pos"]
 	var t: Vector3 = preset["target"]
-	_cam_target = t
+	_goal_target = t
 	var offset := p - t
-	_dist = offset.length()
-	_yaw = atan2(offset.x, offset.z)
-	_pitch = clampf(asin(-offset.y / maxf(_dist, 1e-4)), -1.2, 0.1)
-	_update_camera_transform()
+	_goal_dist = offset.length()
+	_goal_yaw = atan2(offset.x, offset.z)
+	_goal_pitch = clampf(asin(-offset.y / maxf(_goal_dist, 1e-4)), -1.2, 0.1)
+
+	if instant:
+		_cam_target = _goal_target
+		_dist = _goal_dist
+		_yaw = _goal_yaw
+		_pitch = _goal_pitch
+		_update_camera_transform()
 
 func _update_camera_transform() -> void:
 	if _camera == null:
@@ -232,12 +282,22 @@ func _ray_sphere_dist(ray_origin: Vector3, ray_dir: Vector3, center: Vector3, ra
 	var t := -b - sqrt(disc)
 	return t if t >= 0.0 else (-b + sqrt(disc))
 
+func _project_cursor_to_drag_world(local_pos: Vector2) -> Vector3:
+	var ray := _screen_to_vp_ray(local_pos)
+	var hit: Variant = _drag_plane.intersects_ray(ray["origin"], ray["dir"])
+	var pt: Vector3 = hit if hit != null else _drag_target_world
+	pt += _drag_grab_offset
+	pt.x = clampf(pt.x, -0.45, 0.50)
+	pt.y = clampf(pt.y, 0.011, 0.28)
+	pt.z = clampf(pt.z, 0.16, 0.34)
+	return pt
+
 func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree() or _camera == null:
 		return
 	var local_pos := get_local_mouse_position()
 	var rect := Rect2(Vector2.ZERO, size)
-	if not rect.has_point(local_pos) and _active_knob.is_empty() and _dragging_probe_kind == "" and not _orbiting:
+	if not rect.has_point(local_pos) and _active_knob.is_empty() and _dragging_probe_kind == "" and not _orbiting and not _panning:
 		return
 
 	if event is InputEventMouseMotion:
@@ -254,10 +314,21 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
+		if _panning:
+			var cam_right := _camera.global_transform.basis.x
+			var cam_up := _camera.global_transform.basis.y
+			var pan_speed := _goal_dist * 0.0015
+			_goal_target -= cam_right * (mm.relative.x * pan_speed)
+			_goal_target += cam_up * (mm.relative.y * pan_speed)
+			_goal_target.x = clampf(_goal_target.x, -0.45, 0.50)
+			_goal_target.y = clampf(_goal_target.y, 0.02, 0.32)
+			_goal_target.z = clampf(_goal_target.z, -0.15, 0.35)
+			get_viewport().set_input_as_handled()
+			return
+
 		if _orbiting:
-			_yaw = clampf(_yaw - mm.relative.x * 0.007, -1.35, 1.35)
-			_pitch = clampf(_pitch - mm.relative.y * 0.007, -1.15, 0.05)
-			_update_camera_transform()
+			_goal_yaw = clampf(_goal_yaw - mm.relative.x * 0.007, -1.35, 1.35)
+			_goal_pitch = clampf(_goal_pitch - mm.relative.y * 0.007, -1.15, 0.05)
 			get_viewport().set_input_as_handled()
 			return
 
@@ -265,25 +336,32 @@ func _input(event: InputEvent) -> void:
 
 	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_RIGHT:
+		if mb.button_index == MOUSE_BUTTON_MIDDLE:
+			_panning = mb.pressed
+			mouse_default_cursor_shape = Control.CURSOR_MOVE if mb.pressed else Control.CURSOR_ARROW
+			get_viewport().set_input_as_handled()
+		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			_orbiting = mb.pressed
 			get_viewport().set_input_as_handled()
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
 			if not _hovered_ctrl.is_empty() and _hovered_ctrl["type"] == "knob":
 				_set_knob_3d_value(_hovered_ctrl, float(_hovered_ctrl["value"]) + float(_hovered_ctrl["step"]))
 			else:
-				_dist = clampf(_dist - 0.035, 0.20, 0.95)
-				_update_camera_transform()
+				_goal_dist = clampf(_goal_dist - 0.04, 0.16, 1.05)
 			get_viewport().set_input_as_handled()
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
 			if not _hovered_ctrl.is_empty() and _hovered_ctrl["type"] == "knob":
 				_set_knob_3d_value(_hovered_ctrl, float(_hovered_ctrl["value"]) - float(_hovered_ctrl["step"]))
 			else:
-				_dist = clampf(_dist + 0.035, 0.20, 0.95)
-				_update_camera_transform()
+				_goal_dist = clampf(_goal_dist + 0.04, 0.16, 1.05)
 			get_viewport().set_input_as_handled()
 		elif mb.button_index == MOUSE_BUTTON_LEFT:
 			if mb.pressed:
+				if Input.is_key_pressed(KEY_CTRL):
+					_panning = true
+					mouse_default_cursor_shape = Control.CURSOR_MOVE
+					get_viewport().set_input_as_handled()
+					return
 				_pick_hovered_control(local_pos)
 				if not _hovered_ctrl.is_empty():
 					var t: String = _hovered_ctrl["type"]
@@ -295,17 +373,30 @@ func _input(event: InputEvent) -> void:
 						_cycle_switch_3d(_hovered_ctrl)
 					elif t == "button":
 						_toggle_button_3d(_hovered_ctrl)
-					elif t == "draggable_tip":
-						_dragging_probe_kind = "tip"
+					elif t == "draggable_tip" or t == "draggable_bnc":
+						_dragging_probe_kind = "tip" if t == "draggable_tip" else "bnc"
 						_dragging_probe_idx = int(_hovered_ctrl["probe_idx"])
-					elif t == "draggable_bnc":
-						_dragging_probe_kind = "bnc"
-						_dragging_probe_idx = int(_hovered_ctrl["probe_idx"])
+						var p_key := "probe1" if _dragging_probe_idx == 1 else "probe2"
+						var probe_root: Node3D = _scope_data[p_key]["probe_tip" if _dragging_probe_kind == "tip" else "bnc_plug"]
+						var cam_fwd := -_camera.global_transform.basis.z
+						_drag_plane = Plane(-cam_fwd, probe_root.global_position)
+						var ray := _screen_to_vp_ray(local_pos)
+						var initial_hit: Variant = _drag_plane.intersects_ray(ray["origin"], ray["dir"])
+						_drag_grab_offset = (probe_root.global_position - initial_hit) if initial_hit != null else Vector3.ZERO
+						_drag_current_world = probe_root.global_position
+						_drag_target_world = probe_root.global_position
+						mouse_default_cursor_shape = Control.CURSOR_DRAG
+						_handle_probe_drag(local_pos)
 					get_viewport().set_input_as_handled()
 			else:
+				if _panning:
+					_panning = false
+					mouse_default_cursor_shape = Control.CURSOR_ARROW
+					get_viewport().set_input_as_handled()
 				if _dragging_probe_kind != "":
 					_finish_probe_drop(local_pos)
 					_dragging_probe_kind = ""
+					mouse_default_cursor_shape = Control.CURSOR_ARROW
 					get_viewport().set_input_as_handled()
 				_active_knob = {}
 
@@ -340,35 +431,26 @@ func _pick_hovered_control(local_pos: Vector2) -> void:
 		var p1_t := str(SimState.analog_config.get("probe1_tip", "FG_CH1"))
 		var p2_b := str(SimState.analog_config.get("probe2_bnc", "CH2"))
 		var p2_t := str(SimState.analog_config.get("probe2_tip", "FG_CH2"))
-		_hud_label.text = "P1[%s→%s]  P2[%s→%s]  |  Hover knob/switch/probe (blue ring) | Drag Probe Tip or BNC to plug" % [p1_b, p1_t, p2_b, p2_t]
+		var mode_names: Array[String] = ["CH1 ONLY", "ALT (BOTH)", "CH2 ONLY"]
+		var m_str: String = mode_names[clampi(int(SimState.analog_config.get("vert_mode", 1)), 0, 2)]
+		_hud_label.text = "MODE:%s | P1[%s→%s] P2[%s→%s] | Ctrl+Drag: Pan | Right-Drag: Orbit" % [m_str, p1_b, p1_t, p2_b, p2_t]
 
 func _handle_probe_drag(local_pos: Vector2) -> void:
-	var ray := _screen_to_vp_ray(local_pos)
-	var origin: Vector3 = ray["origin"]
-	var dir: Vector3 = ray["dir"]
-
-	var plane_z := 0.21
-	var t_plane := (plane_z - origin.z) / (dir.z if absf(dir.z) > 1e-4 else -1e-4)
-	var world_pt := origin + dir * clampf(t_plane, 0.1, 1.5)
-	world_pt.y = maxf(world_pt.y, 0.012)
+	var world_pt := _project_cursor_to_drag_world(local_pos)
 
 	var snaps: Dictionary = _scope_data.get("snap_targets", {})
 	var nearest_key := ""
-	var nearest_dist := 0.055
+	var nearest_dist := 0.060
 	for key in snaps.keys():
 		var info: Dictionary = snaps[key]
 		if info["kind"] != _dragging_probe_kind:
 			continue
 		var target_node: Node3D = info["node"]
-		var d := world_pt.distance_to(target_node.global_position + info["offset"])
+		var snap_pos: Vector3 = target_node.global_position + info["offset"]
+		var d := Vector2(world_pt.x, world_pt.y).distance_to(Vector2(snap_pos.x, snap_pos.y))
 		if d < nearest_dist:
 			nearest_dist = d
 			nearest_key = key
-
-	var p_key := "probe1" if _dragging_probe_idx == 1 else "probe2"
-	var p_data: Dictionary = _scope_data[p_key]
-	var cur_bnc := str(SimState.analog_config.get(p_key + "_bnc", "UNPLUGGED"))
-	var cur_tip := str(SimState.analog_config.get(p_key + "_tip", "FLOATING"))
 
 	if nearest_key != "":
 		var info: Dictionary = snaps[nearest_key]
@@ -377,30 +459,25 @@ func _handle_probe_drag(local_pos: Vector2) -> void:
 		_hover_ring.global_position = target_node.global_position + Vector3(0, 0, 0.010)
 		_hover_ring.scale = Vector3(0.017, 0.017, 0.017)
 		_hud_label.text = "[RELEASE TO PLUG PROBE %d INTO] %s" % [_dragging_probe_idx, info["label"]]
-		VP5231A3DBuilder.update_single_probe(p_data, snaps, cur_bnc, cur_tip, _dragging_probe_kind, target_node.global_position + info["offset"])
+		_drag_target_world = target_node.global_position + info["offset"]
 	else:
 		_hover_ring.visible = false
-		_hud_label.text = "Dragging Probe %d %s — Drop onto any glowing BNC/CAL terminal (or drop on mat to unplug)" % [_dragging_probe_idx, _dragging_probe_kind.to_upper()]
-		VP5231A3DBuilder.update_single_probe(p_data, snaps, cur_bnc, cur_tip, _dragging_probe_kind, world_pt)
+		_hud_label.text = "Dragging Probe %d %s — Move over any jack to snap, or release on mat to unplug" % [_dragging_probe_idx, _dragging_probe_kind.to_upper()]
+		_drag_target_world = world_pt
 
 func _finish_probe_drop(local_pos: Vector2) -> void:
-	var ray := _screen_to_vp_ray(local_pos)
-	var origin: Vector3 = ray["origin"]
-	var dir: Vector3 = ray["dir"]
-	var plane_z := 0.21
-	var t_plane := (plane_z - origin.z) / (dir.z if absf(dir.z) > 1e-4 else -1e-4)
-	var world_pt := origin + dir * clampf(t_plane, 0.1, 1.5)
-	world_pt.y = maxf(world_pt.y, 0.012)
+	var world_pt := _project_cursor_to_drag_world(local_pos)
 
 	var snaps: Dictionary = _scope_data.get("snap_targets", {})
 	var nearest_key := ""
-	var nearest_dist := 0.055
+	var nearest_dist := 0.060
 	for key in snaps.keys():
 		var info: Dictionary = snaps[key]
 		if info["kind"] != _dragging_probe_kind:
 			continue
 		var target_node: Node3D = info["node"]
-		var d := world_pt.distance_to(target_node.global_position + info["offset"])
+		var snap_pos: Vector3 = target_node.global_position + info["offset"]
+		var d := Vector2(world_pt.x, world_pt.y).distance_to(Vector2(snap_pos.x, snap_pos.y))
 		if d < nearest_dist:
 			nearest_dist = d
 			nearest_key = key
@@ -527,28 +604,35 @@ func _sync_visuals() -> void:
 	cap.position.z = 0.0015 if is_on else 0.0035
 
 	var snaps: Dictionary = _scope_data["snap_targets"]
-	VP5231A3DBuilder.update_single_probe(
-		_scope_data["probe1"], snaps,
-		str(SimState.analog_config.get("probe1_bnc", "CH1")),
-		str(SimState.analog_config.get("probe1_tip", "FG_CH1"))
-	)
-	VP5231A3DBuilder.update_single_probe(
-		_scope_data["probe2"], snaps,
-		str(SimState.analog_config.get("probe2_bnc", "CH2")),
-		str(SimState.analog_config.get("probe2_tip", "FG_CH2"))
-	)
+	if _dragging_probe_kind == "":
+		VP5231A3DBuilder.update_single_probe(
+			_scope_data["probe1"], snaps,
+			str(SimState.analog_config.get("probe1_bnc", "CH1")),
+			str(SimState.analog_config.get("probe1_tip", "FG_CH1"))
+		)
+		VP5231A3DBuilder.update_single_probe(
+			_scope_data["probe2"], snaps,
+			str(SimState.analog_config.get("probe2_bnc", "CH2")),
+			str(SimState.analog_config.get("probe2_tip", "FG_CH2"))
+		)
 
-	# Sync 3D rotor angles & switch positions when changed from 2D panel or Lab Mode reset
 	for ctrl in _scope_data.get("interactables", []):
 		var pid: String = ctrl.get("param_id", "")
 		if ctrl["type"] == "knob":
 			var target_v := float(ctrl["value"])
 			if SimState.analog_config.has(pid):
 				target_v = float(SimState.analog_config[pid])
+			elif pid == "ch2_pos":
+				target_v = float(SimState.analog_config.get("ch2_vert_pos_div", 0.0))
 			elif pid == "volts_per_div":
 				var v_cur := float(SimState.view_config["volts_per_div"])
 				for i in range(VOLTS_STEPS.size()):
 					if absf(VOLTS_STEPS[i] - v_cur) < 1e-4:
+						target_v = float(i)
+			elif pid == "ch2_volts":
+				var v2_cur := float(SimState.view_config.get("ch2_volts_per_div", 1.0))
+				for i in range(VOLTS_STEPS.size()):
+					if absf(VOLTS_STEPS[i] - v2_cur) < 1e-4:
 						target_v = float(i)
 			elif pid == "time_per_div":
 				var t_cur := float(SimState.view_config["time_per_div"])
@@ -565,8 +649,12 @@ func _sync_visuals() -> void:
 			var norm := clampf((target_v - float(ctrl["min"])) / maxf(float(ctrl["max"]) - float(ctrl["min"]), 1e-6), 0.0, 1.0)
 			ctrl["rotor"].rotation.z = lerpf(deg_to_rad(135.0), deg_to_rad(-135.0), norm)
 		elif ctrl["type"] == "switch":
-			if pid == "coupling":
+			if pid == "vert_mode":
+				ctrl["index"] = int(SimState.analog_config.get("vert_mode", 1))
+			elif pid == "coupling":
 				ctrl["index"] = int(SimState.analog_config["coupling"])
+			elif pid == "ch2_coupling":
+				ctrl["index"] = int(SimState.analog_config.get("ch2_coupling", 0))
 			elif pid == "trigger_slope":
 				ctrl["index"] = int(SimState.analog_config["trigger_slope"])
 			elif pid == "probe_attenuation_switch":
@@ -582,7 +670,6 @@ func _sync_visuals() -> void:
 		freq_lbl.text = "Freq: %.0f Hz" % SimState.signal_params["frequency"]
 		amp_lbl.text = "Ampl: %.2f Vpp" % (SimState.signal_params["amplitude"] * 2.0)
 
-	# Update Calibration Checklist HUD if in Calibration Lab Mode
 	if _checklist_panel != null:
 		var is_cal_mode := (SimState.lab_mode == "CALIBRATION")
 		_checklist_panel.visible = is_cal_mode
