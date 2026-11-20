@@ -7,9 +7,11 @@ var _pwr_btn: Button
 var _workbench_3d: Workbench3D
 var _instrument_view: Control
 var _circuit_view: AnalogCircuitExplorer
+var _challenge_view: ChallengePanel
 var _btn_3d_mode: Button
 var _btn_inst_mode: Button
 var _btn_arch_mode: Button
+var _btn_chal_mode: Button
 
 # Two-way synced 2D controls
 var _knobs_2d := {}
@@ -50,7 +52,7 @@ func _make_panel_style(bg: Color, border: Color, border_w := 2, radius := 4) -> 
 	return sb
 
 func _set_active_mode(mode_idx: int) -> void:
-	var views: Array[Control] = [_workbench_3d, _instrument_view, _circuit_view]
+	var views: Array[Control] = [_workbench_3d, _instrument_view, _circuit_view, _challenge_view]
 	for i in range(views.size()):
 		var v := views[i]
 		var active := (i == mode_idx)
@@ -62,6 +64,7 @@ func _set_active_mode(mode_idx: int) -> void:
 	_btn_3d_mode.button_pressed = (mode_idx == 0)
 	_btn_inst_mode.button_pressed = (mode_idx == 1)
 	_btn_arch_mode.button_pressed = (mode_idx == 2)
+	_btn_chal_mode.button_pressed = (mode_idx == 3)
 
 func _sync_2d_from_state() -> void:
 	if _syncing_ui:
@@ -177,6 +180,13 @@ func _build_workspace() -> void:
 	_btn_arch_mode.button_pressed = false
 	_btn_arch_mode.pressed.connect(func() -> void: _set_active_mode(2))
 	nav_bar.add_child(_btn_arch_mode)
+
+	_btn_chal_mode = Button.new()
+	_btn_chal_mode.text = " [4] Practicum Challenge "
+	_btn_chal_mode.toggle_mode = true
+	_btn_chal_mode.button_pressed = false
+	_btn_chal_mode.pressed.connect(func() -> void: _set_active_mode(3))
+	nav_bar.add_child(_btn_chal_mode)
 
 	# ==================== VIEW 1: 3D LAB WORKBENCH ====================
 	_workbench_3d = Workbench3D.new()
@@ -408,6 +418,12 @@ func _build_workspace() -> void:
 	_circuit_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_circuit_view.visible = false
 	root_vbox.add_child(_circuit_view)
+
+	_challenge_view = ChallengePanel.new()
+	_challenge_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_challenge_view.visible = false
+	_challenge_view.jump_to_3d_requested.connect(func() -> void: _set_active_mode(0))
+	root_vbox.add_child(_challenge_view)
 
 	# ==================== BOTTOM BENCH BAR: FUNCTION GENERATOR SOURCE ====================
 	var gen_bar := PanelContainer.new()
