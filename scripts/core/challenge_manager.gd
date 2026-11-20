@@ -4,9 +4,9 @@ extends RefCounted
 const MISSIONS := [
 	{
 		"id": "M1_CAL",
-		"title": "Mission 1: Probe Compensation & 1Vp-p Calibration",
+		"title": "Mission 1: Scope Probe Compensation & 1Vp-p Calibration",
 		"time_limit": 120.0,
-		"description": "The VP-5231A is uncalibrated and probes are unplugged. Plug a probe into CH 1 and CAL 1Vp-p, switch to 10x, tune PROBE COMP until square corners are flat, lock trigger, and submit your graticule readings.",
+		"description": "Calibrate the VP-5231A: plug Probe 1 into CH 1 and CAL 1Vp-p, switch to 10x, tune PROBE COMP for flat square corners, lock trigger, and submit Vpp, Frequency, and DC Offset.",
 		"req_tip": "CAL_1VPP",
 		"req_10x": true,
 		"true_vpp": 1.0,
@@ -16,9 +16,9 @@ const MISSIONS := [
 	},
 	{
 		"id": "M2_UNKNOWN",
-		"title": "Mission 2: Unknown Signal Graticule Measurement",
+		"title": "Mission 2: Unknown Function Generator Signal Reading",
 		"time_limit": 150.0,
-		"description": "Calibrate the scope, plug Probe 1 into Siglent CH1 OUT, and measure the unknown waveform purely by counting CRT divisions (Volts/Div & Time/Div). Submit Vpp, Frequency, and DC Offset before time expires!",
+		"description": "Connect Probe 1 (CH 1 → FG CH1 OUT), calibrate the scope, and measure the unknown waveform by counting CRT divisions. Submit Vpp, Frequency, and DC Offset.",
 		"req_tip": "FG_CH1",
 		"req_10x": false,
 		"true_vpp": 3.2,
@@ -27,17 +27,44 @@ const MISSIONS := [
 		"randomize_fg": true
 	},
 	{
-		"id": "M3_DUAL",
-		"title": "Mission 3: Dual-Channel (CH1 + CH2) Bench Audit",
-		"time_limit": 180.0,
-		"description": "Connect Probe 1 (CH1 -> FG CH1 OUT) and Probe 2 (CH2 -> FG CH2 OUT), enable ALT (Dual) mode, calibrate the scope, and read CH1 Vpp, CH1 Frequency, and CH1 DC Offset from the CRT.",
-		"req_tip": "FG_CH1",
-		"req_dual": true,
+		"id": "M3_BB_RC",
+		"title": "Mission 3: Breadboard RC Low-Pass Filter Output (TP2)",
+		"time_limit": 150.0,
+		"description": "Select Breadboard Model 1 (RC Low-Pass Filter), clip Probe 1 hook onto Breadboard TP2 (Capacitor Out), and measure the attenuated filtered Vpp, Frequency, and DC Offset.",
+		"req_tip": "BB_TP2",
+		"bb_model": 0,
 		"req_10x": false,
-		"true_vpp": 4.0,
-		"true_freq": 2000.0,
-		"true_offset": -0.6,
-		"randomize_fg": true
+		"true_vpp": 3.52,
+		"true_freq": 1600.0,
+		"true_offset": 0.0,
+		"randomize_fg": false
+	},
+	{
+		"id": "M4_BB_RECT",
+		"title": "Mission 4: Breadboard Diode Rectifier & Ripple (TP2 / TP3)",
+		"time_limit": 150.0,
+		"description": "Select Breadboard Model 2 (Diode Rectifier), probe TP2 (Half-Wave Rectified output after 0.65V diode drop), and measure its peak-to-peak amplitude Vpp, Frequency, and average DC Offset.",
+		"req_tip": "BB_TP2",
+		"bb_model": 1,
+		"req_10x": false,
+		"true_vpp": 2.35,
+		"true_freq": 500.0,
+		"true_offset": 0.75,
+		"randomize_fg": false
+	},
+	{
+		"id": "M5_BB_PROC",
+		"title": "Mission 5: Procedural Breadboard Circuit Audit (TP2)",
+		"time_limit": 180.0,
+		"description": "A procedural RC circuit with randomized R, C, and drive frequency has been placed on the breadboard! Clip Probe 1 onto Breadboard TP2, calibrate the scope, and measure Vpp, Frequency, and DC Offset.",
+		"req_tip": "BB_TP2",
+		"bb_model": 3,
+		"procedural_bb": true,
+		"req_10x": false,
+		"true_vpp": 2.0,
+		"true_freq": 1000.0,
+		"true_offset": 0.0,
+		"randomize_fg": false
 	}
 ]
 
@@ -56,7 +83,26 @@ static func build_mission_instance(mission_idx: int) -> Dictionary:
 		base["true_freq"] = freq
 		base["true_offset"] = off
 		base["fg_amp"] = amp
-		base["fg_wf"] = SignalGenerator.WaveformType.SINE if mission_idx == 1 else SignalGenerator.WaveformType.TRIANGLE
+		base["fg_wf"] = SignalGenerator.WaveformType.SINE
+	elif base.get("procedural_bb", false):
+		SimState.select_breadboard_model(3, true)
+		var cfg := SimState.breadboard_config
+		var omega := TAU * float(cfg["freq_hz"])
+		var rc := float(cfg["r_ohm"]) * float(cfg["c_farad"])
+		var gain := 1.0 / sqrt(1.0 + pow(omega * rc, 2.0))
+		base["true_vpp"] = float(cfg["v_in_amp"]) * 2.0 * gain
+		base["true_freq"] = float(cfg["freq_hz"])
+		base["true_offset"] = 0.0
+	elif base.has("bb_model"):
+		SimState.select_breadboard_model(int(base["bb_model"]), false)
+		if int(base["bb_model"]) == 0:
+			var cfg := SimState.breadboard_config
+			var omega := TAU * float(cfg["freq_hz"])
+			var rc := float(cfg["r_ohm"]) * float(cfg["c_farad"])
+			var gain := 1.0 / sqrt(1.0 + pow(omega * rc, 2.0))
+			base["true_vpp"] = float(cfg["v_in_amp"]) * 2.0 * gain
+			base["true_freq"] = float(cfg["freq_hz"])
+			base["true_offset"] = 0.0
 	return base
 
 static func evaluate_submission(mission: Dictionary, sub_vpp: float, sub_freq: float, sub_offset: float, time_left: float) -> Dictionary:
@@ -67,8 +113,6 @@ static func evaluate_submission(mission: Dictionary, sub_vpp: float, sub_freq: f
 
 	var req_tip := str(mission.get("req_tip", "CAL_1VPP"))
 	var routing_ok := (p1_bnc == "CH1" and p1_tip == req_tip) or (p2_bnc == "CH1" and p2_tip == req_tip)
-	if mission.get("req_dual", false):
-		routing_ok = (p1_bnc == "CH1" and p1_tip == "FG_CH1") and (p2_bnc == "CH2" and p2_tip == "FG_CH2")
 
 	var coupling_ok := int(SimState.analog_config["coupling"]) == AnalogScopeEngine.CouplingMode.DC
 	var trig_ok := SimState.is_triggered
@@ -95,18 +139,18 @@ static func evaluate_submission(mission: Dictionary, sub_vpp: float, sub_freq: f
 	var freq_err_pct := absf(sub_freq - true_freq) / maxf(true_freq, 1e-6) * 100.0
 	var off_err_v := absf(sub_offset - true_off)
 
-	var vpp_ok := vpp_err_pct <= 7.0
-	var freq_ok := freq_err_pct <= 7.0
-	var off_ok := off_err_v <= 0.20
+	var vpp_ok := vpp_err_pct <= 8.0
+	var freq_ok := freq_err_pct <= 8.0
+	var off_ok := off_err_v <= 0.25
 
 	var read_score := 0
 	if vpp_ok:
 		read_score += 20
-	elif vpp_err_pct <= 15.0:
+	elif vpp_err_pct <= 16.0:
 		read_score += 10
 	if freq_ok:
 		read_score += 20
-	elif freq_err_pct <= 15.0:
+	elif freq_err_pct <= 16.0:
 		read_score += 10
 	if off_ok:
 		read_score += 10

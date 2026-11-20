@@ -5,6 +5,13 @@ signal selected_node_changed(node_id: String)
 
 var lab_mode := "NORMAL" # "NORMAL" or "CALIBRATION"
 var fg_selected_channel := 1 # 1 or 2 on Siglent SDG1032X
+var breadboard_model_idx := 0
+var board_is_pcb := false
+var active_challenge_running := false
+var active_mission_data := {}
+var active_time_remaining := 0.0
+var last_mission_report := ""
+var breadboard_config: Dictionary = Breadboard3DBuilder.CIRCUIT_MODELS[0].duplicate(true)
 
 var fg_channels := {
 	1: {
@@ -85,6 +92,26 @@ func _ready() -> void:
 func select_fg_channel(ch: int) -> void:
 	fg_selected_channel = 1 if ch != 2 else 2
 	state_updated.emit()
+
+func set_board_is_pcb(is_pcb: bool) -> void:
+	board_is_pcb = is_pcb
+	state_updated.emit()
+
+func select_breadboard_model(idx: int, randomize_proc := false) -> void:
+	breadboard_model_idx = clampi(idx, 0, Breadboard3DBuilder.CIRCUIT_MODELS.size() - 1)
+	breadboard_config = Breadboard3DBuilder.CIRCUIT_MODELS[breadboard_model_idx].duplicate(true)
+	if randomize_proc or breadboard_config.get("id") == "PROCEDURAL_MIX":
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		var r_list := [470.0, 1000.0, 2200.0, 4700.0]
+		var c_list := [22e-9, 47e-9, 100e-9, 220e-9]
+		var f_list := [500.0, 1000.0, 1500.0, 2500.0]
+		var a_list := [1.5, 2.0, 2.5, 3.0]
+		breadboard_config["r_ohm"] = r_list[rng.randi_range(0, r_list.size() - 1)]
+		breadboard_config["c_farad"] = c_list[rng.randi_range(0, c_list.size() - 1)]
+		breadboard_config["freq_hz"] = f_list[rng.randi_range(0, f_list.size() - 1)]
+		breadboard_config["v_in_amp"] = a_list[rng.randi_range(0, a_list.size() - 1)]
+	recompute()
 
 func set_lab_mode(mode_name: String) -> void:
 	lab_mode = mode_name
@@ -215,7 +242,7 @@ func recompute() -> void:
 		ch2_tip = p1_tip
 
 	# CH 1 Analog Chain
-	var raw1 := SignalGenerator.generate_buffer(_resolve_tip_signal(ch1_tip), total_samples, total_span, sim_time_offset)
+	var raw1 := Breadboard3DBuilder.generate_breadboard_signal(breadboard_config, ch1_tip, total_samples, total_span, sim_time_offset) if ch1_tip.begins_with("BB_TP") else SignalGenerator.generate_buffer(_resolve_tip_signal(ch1_tip), total_samples, total_span, sim_time_offset)
 	raw_time_buffer = raw1["times"]
 	raw_voltage_buffer = raw1["voltages"]
 	var dt: float = raw1["dt"]
@@ -227,7 +254,7 @@ func recompute() -> void:
 	is_triggered = analog1["triggered"]
 
 	# CH 2 Analog Chain
-	var raw2 := SignalGenerator.generate_buffer(_resolve_tip_signal(ch2_tip), total_samples, total_span, sim_time_offset)
+	var raw2 := Breadboard3DBuilder.generate_breadboard_signal(breadboard_config, ch2_tip, total_samples, total_span, sim_time_offset) if ch2_tip.begins_with("BB_TP") else SignalGenerator.generate_buffer(_resolve_tip_signal(ch2_tip), total_samples, total_span, sim_time_offset)
 	var cfg2 := analog_config.duplicate()
 	cfg2["coupling"] = analog_config.get("ch2_coupling", AnalogScopeEngine.CouplingMode.DC)
 	cfg2["probe_attenuation"] = analog_config.get("probe2_attenuation", 1.0)

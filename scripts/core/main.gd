@@ -12,6 +12,13 @@ var _btn_3d_mode: Button
 var _btn_inst_mode: Button
 var _btn_arch_mode: Button
 var _btn_chal_mode: Button
+var _popup_panel: PanelContainer
+var _popup_timer_lbl: Label
+var _popup_desc_lbl: Label
+var _popup_vpp: SpinBox
+var _popup_freq: SpinBox
+var _popup_off: SpinBox
+var _popup_res_lbl: Label
 
 # Two-way synced 2D controls
 var _knobs_2d := {}
@@ -423,6 +430,20 @@ func _build_workspace() -> void:
 	_challenge_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_challenge_view.visible = false
 	_challenge_view.jump_to_3d_requested.connect(func() -> void: _set_active_mode(0))
+	_challenge_view.mission_started.connect(func(m: Dictionary) -> void:
+		_set_active_mode(0)
+		if _popup_panel != null:
+			_popup_panel.visible = true
+			_popup_res_lbl.text = ""
+			var mins := int(_challenge_view.time_remaining) / 60
+			var secs := int(_challenge_view.time_remaining) % 60
+			_popup_timer_lbl.text = "⏱ %02d:%02d  |  %s" % [mins, secs, m.get("id", "MISSION")]
+			_popup_desc_lbl.text = str(m.get("description", ""))
+		if str(m.get("req_tip", "")).begins_with("BB_TP"):
+			_workbench_3d._apply_camera_preset(4, false)
+		else:
+			_workbench_3d._apply_camera_preset(0, false)
+	)
 	root_vbox.add_child(_challenge_view)
 
 	# ==================== BOTTOM BENCH BAR: FUNCTION GENERATOR SOURCE ====================
@@ -454,6 +475,22 @@ func _build_workspace() -> void:
 		SimState.select_fg_channel(idx + 1)
 	)
 	gen_hbox.add_child(fg_ch_opt)
+
+	var bb_opt := OptionButton.new()
+	for m in Breadboard3DBuilder.CIRCUIT_MODELS:
+		bb_opt.add_item(m["name"])
+	bb_opt.item_selected.connect(func(idx: int) -> void:
+		SimState.select_breadboard_model(idx, idx == 3)
+	)
+	gen_hbox.add_child(bb_opt)
+
+	var board_style_opt := OptionButton.new()
+	board_style_opt.add_item("Board: Breadboard")
+	board_style_opt.add_item("Board: Green FR-4 PCB")
+	board_style_opt.item_selected.connect(func(idx: int) -> void:
+		SimState.set_board_is_pcb(idx == 1)
+	)
+	gen_hbox.add_child(board_style_opt)
 
 	_wf_opt = OptionButton.new()
 	for wf_name in SignalGenerator.WAVEFORM_NAMES:

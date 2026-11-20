@@ -8,7 +8,8 @@ const CAMERA_PRESETS := [
 	{"name": "1: Full Bench", "pos": Vector3(0.03, 0.25, 0.62), "target": Vector3(0.02, 0.09, 0.14)},
 	{"name": "2: Scope Knobs", "pos": Vector3(-0.07, 0.14, 0.39), "target": Vector3(-0.08, 0.10, 0.18)},
 	{"name": "3: CRT + CAL Hook", "pos": Vector3(-0.26, 0.13, 0.37), "target": Vector3(-0.26, 0.10, 0.18)},
-	{"name": "4: Siglent Gen", "pos": Vector3(0.24, 0.14, 0.38), "target": Vector3(0.24, 0.06, 0.14)}
+	{"name": "4: Siglent Gen", "pos": Vector3(0.24, 0.14, 0.38), "target": Vector3(0.24, 0.06, 0.14)},
+	{"name": "5: Breadboard", "pos": Vector3(0.045, 0.14, 0.42), "target": Vector3(0.045, 0.015, 0.245)}
 ]
 
 var _main_vp: SubViewport
@@ -46,6 +47,14 @@ var _pulse_time := 0.0
 var _hud_label: Label
 var _checklist_panel: PanelContainer
 var _checklist_lbl: Label
+var _mission_card: PanelContainer
+var _m_timer_lbl: Label
+var _m_title_lbl: Label
+var _m_desc_lbl: Label
+var _m_vpp_spin: SpinBox
+var _m_freq_spin: SpinBox
+var _m_off_spin: SpinBox
+var _m_res_lbl: Label
 var _preset_buttons: Array[Button] = []
 
 func _ready() -> void:
@@ -80,6 +89,20 @@ func _process(delta: float) -> void:
 		var cur_bnc := str(SimState.analog_config.get(p_key + "_bnc", "UNPLUGGED"))
 		var cur_tip := str(SimState.analog_config.get(p_key + "_tip", "FLOATING"))
 		VP5231A3DBuilder.update_single_probe(p_data, snaps, cur_bnc, cur_tip, _dragging_probe_kind, _drag_current_world)
+
+	# 2b. Live update Timed Mission Card on 3D Bench
+	if _mission_card != null and has_node("/root/SimState"):
+		var show_card := SimState.active_challenge_running or (SimState.last_mission_report != "")
+		_mission_card.visible = show_card
+		if show_card:
+			var t_rem := float(SimState.active_time_remaining)
+			var mins := int(t_rem) / 60
+			var secs := int(t_rem) % 60
+			_m_timer_lbl.text = ("⏱ TIME LEFT: %02d:%02d  [ACTIVE]" % [mins, secs]) if SimState.active_challenge_running else "✓ MISSION SUBMITTED"
+			_m_title_lbl.text = str(SimState.active_mission_data.get("title", ""))
+			_m_desc_lbl.text = str(SimState.active_mission_data.get("description", ""))
+			if SimState.last_mission_report != "":
+				_m_res_lbl.text = SimState.last_mission_report
 
 	# 3. Subtle pulsing glow on the active cyan-blue selection ring
 	if _hover_ring != null and _hover_ring.visible and _ring_mat != null:
@@ -218,6 +241,80 @@ func _build_overlay_hud() -> void:
 	sb.set_corner_radius_all(5)
 	_checklist_panel.add_theme_stylebox_override("panel", sb)
 	vbox.add_child(_checklist_panel)
+
+	# Active Timed Mission & Reading Submission Card (visible when a Challenge starts)
+	_mission_card = PanelContainer.new()
+	_mission_card.custom_minimum_size = Vector2(360, 0)
+	_mission_card.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_mission_card.visible = false
+	var msb := StyleBoxFlat.new()
+	msb.bg_color = Color(0.06, 0.09, 0.13, 0.93)
+	msb.border_color = Color(1.0, 0.76, 0.22, 0.95)
+	msb.set_border_width_all(2)
+	msb.set_corner_radius_all(6)
+	_mission_card.add_theme_stylebox_override("panel", msb)
+	vbox.add_child(_mission_card)
+
+	var m_pad := MarginContainer.new()
+	m_pad.add_theme_constant_override("margin_left", 12)
+	m_pad.add_theme_constant_override("margin_right", 12)
+	m_pad.add_theme_constant_override("margin_top", 8)
+	m_pad.add_theme_constant_override("margin_bottom", 8)
+	_mission_card.add_child(m_pad)
+
+	var m_vb := VBoxContainer.new()
+	m_vb.add_theme_constant_override("separation", 5)
+	m_pad.add_child(m_vb)
+
+	_m_timer_lbl = Label.new()
+	_m_timer_lbl.text = "⏱ TIME LEFT: 02:00"
+	_m_timer_lbl.add_theme_font_size_override("font_size", 15)
+	_m_timer_lbl.add_theme_color_override("font_color", Color(1.0, 0.82, 0.28, 1.0))
+	m_vb.add_child(_m_timer_lbl)
+
+	_m_title_lbl = Label.new()
+	_m_title_lbl.add_theme_font_size_override("font_size", 12)
+	_m_title_lbl.add_theme_color_override("font_color", Color(0.45, 0.95, 0.78, 1.0))
+	m_vb.add_child(_m_title_lbl)
+
+	_m_desc_lbl = Label.new()
+	_m_desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_m_desc_lbl.custom_minimum_size = Vector2(330, 0)
+	_m_desc_lbl.add_theme_font_size_override("font_size", 11)
+	_m_desc_lbl.add_theme_color_override("font_color", Color(0.88, 0.92, 0.96, 1.0))
+	m_vb.add_child(_m_desc_lbl)
+
+	var m_grid := GridContainer.new()
+	m_grid.columns = 2
+	m_grid.add_theme_constant_override("h_separation", 8)
+	m_grid.add_theme_constant_override("v_separation", 4)
+	m_vb.add_child(m_grid)
+
+	var ml1 := Label.new(); ml1.text = "Measured Vpp (V):"; ml1.add_theme_font_size_override("font_size", 11); m_grid.add_child(ml1)
+	_m_vpp_spin = SpinBox.new(); _m_vpp_spin.min_value = 0.0; _m_vpp_spin.max_value = 20.0; _m_vpp_spin.step = 0.05; _m_vpp_spin.value = 1.0; m_grid.add_child(_m_vpp_spin)
+
+	var ml2 := Label.new(); ml2.text = "Measured Freq (Hz):"; ml2.add_theme_font_size_override("font_size", 11); m_grid.add_child(ml2)
+	_m_freq_spin = SpinBox.new(); _m_freq_spin.min_value = 10.0; _m_freq_spin.max_value = 20000.0; _m_freq_spin.step = 10.0; _m_freq_spin.value = 1000.0; m_grid.add_child(_m_freq_spin)
+
+	var ml3 := Label.new(); ml3.text = "DC Offset (V):"; ml3.add_theme_font_size_override("font_size", 11); m_grid.add_child(ml3)
+	_m_off_spin = SpinBox.new(); _m_off_spin.min_value = -10.0; _m_off_spin.max_value = 10.0; _m_off_spin.step = 0.05; _m_off_spin.value = 0.0; m_grid.add_child(_m_off_spin)
+
+	var m_sub_btn := Button.new()
+	m_sub_btn.text = "✓ SUBMIT READING & CALIBRATION"
+	m_sub_btn.pressed.connect(func() -> void:
+		var res := ChallengeManager.evaluate_submission(SimState.active_mission_data, _m_vpp_spin.value, _m_freq_spin.value, _m_off_spin.value, SimState.active_time_remaining)
+		SimState.active_challenge_running = false
+		SimState.last_mission_report = "Score: %d/100 (%s) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "RETRY", res["true_vpp"], res["true_freq"], res["true_offset"]]
+		_m_res_lbl.text = SimState.last_mission_report
+	)
+	m_vb.add_child(m_sub_btn)
+
+	_m_res_lbl = Label.new()
+	_m_res_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_m_res_lbl.custom_minimum_size = Vector2(330, 0)
+	_m_res_lbl.add_theme_font_size_override("font_size", 11)
+	_m_res_lbl.add_theme_color_override("font_color", Color(0.45, 0.96, 0.78, 1.0))
+	m_vb.add_child(_m_res_lbl)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 10)
@@ -603,6 +700,7 @@ func _sync_visuals() -> void:
 	led_mat.albedo_color = Color(1.0, 0.58, 0.10, 1.0) if is_on else Color(0.28, 0.20, 0.15, 1.0)
 	cap.position.z = 0.0015 if is_on else 0.0035
 
+	Breadboard3DBuilder.set_board_style(_scope_data.get("breadboard", {}), SimState.board_is_pcb)
 	var snaps: Dictionary = _scope_data["snap_targets"]
 	if _dragging_probe_kind == "":
 		VP5231A3DBuilder.update_single_probe(
@@ -671,7 +769,7 @@ func _sync_visuals() -> void:
 		amp_lbl.text = "Ampl: %.2f Vpp" % (SimState.signal_params["amplitude"] * 2.0)
 
 	if _checklist_panel != null:
-		var is_cal_mode := (SimState.lab_mode == "CALIBRATION")
+		var is_cal_mode := (SimState.lab_mode == "CALIBRATION") and (not SimState.active_challenge_running)
 		_checklist_panel.visible = is_cal_mode
 		if is_cal_mode:
 			var steps := SimState.get_calibration_checklist()

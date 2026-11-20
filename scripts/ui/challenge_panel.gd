@@ -2,6 +2,7 @@ class_name ChallengePanel
 extends PanelContainer
 
 signal jump_to_3d_requested
+signal mission_started(mission: Dictionary)
 
 var _mission_opt: OptionButton
 var _start_btn: Button
@@ -36,11 +37,13 @@ func _ready() -> void:
 	if has_node("/root/SimState"):
 		SimState.state_updated.connect(_refresh_hardware_status)
 	_refresh_hardware_status()
+	mission_started.emit(active_mission)
 
 func _process(delta: float) -> void:
 	if not is_running:
 		return
 	time_remaining = maxf(time_remaining - delta, 0.0)
+	SimState.active_time_remaining = time_remaining
 	_update_timer_display()
 	if time_remaining <= 0.0:
 		is_running = false
@@ -265,7 +268,10 @@ func _select_mission(idx: int, auto_start: bool) -> void:
 func _on_start_mission() -> void:
 	var idx := _mission_opt.selected
 	_select_mission(idx, true)
-	# Scramble scope & configure hidden generator target
+	SimState.active_challenge_running = true
+	SimState.active_mission_data = active_mission
+	SimState.active_time_remaining = time_remaining
+	SimState.last_mission_report = ""
 	SimState.set_lab_mode("CALIBRATION")
 	if active_mission.get("randomize_fg", false):
 		SimState.select_fg_channel(1)
@@ -278,6 +284,7 @@ func _on_start_mission() -> void:
 
 func _on_submit_pressed() -> void:
 	is_running = false
+	SimState.active_challenge_running = false
 	_update_timer_display()
 	var res := ChallengeManager.evaluate_submission(
 		active_mission, _in_vpp.value, _in_freq.value, _in_offset.value, time_remaining
@@ -295,6 +302,9 @@ func _on_submit_pressed() -> void:
 		"• Freq: submitted [b]%.0f Hz[/b] vs true [b]%.0f Hz[/b] (err %.1f%%) — %s" % [_in_freq.value, res["true_freq"], res["freq_err_pct"], "PASS" if res["freq_ok"] else "FAIL"],
 		"• Offset: submitted [b]%.2f V[/b] vs true [b]%.2f V[/b] (err %.2f V) — %s" % [_in_offset.value, res["true_offset"], res["off_err_v"], "PASS" if res["off_ok"] else "FAIL"]
 	]
+	_last_summary = "Score: %d/100 (%s)" % [res["total_score"], "PASS" if res["passed"] else "RETRY"]
+	SimState.last_mission_report = "Score: %d/100 (%s) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "RETRY", res["true_vpp"], res["true_freq"], res["true_offset"]]
+	SimState.last_mission_report = "Score: %d/100 (%s) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "RETRY", res["true_vpp"], res["true_freq"], res["true_offset"]]
 	_result_lbl.text = "\n".join(lines)
 
 func _update_timer_display() -> void:
@@ -327,3 +337,14 @@ func _refresh_hardware_status() -> void:
 	var atten := int(round(float(SimState.analog_config["probe_attenuation"])))
 	_status_comp.text = "Probe: %dx | Comp: %.2f" % [atten, comp]
 	_status_comp.add_theme_color_override("font_color", Color(0.45, 0.95, 0.72) if absf(comp - 1.0) <= 0.07 else Color(0.95, 0.78, 0.35))
+
+var _last_summary := ""
+
+func submit_external(vpp_v: float, freq_hz: float, off_v: float) -> void:
+	_in_vpp.value = vpp_v
+	_in_freq.value = freq_hz
+	_in_offset.value = off_v
+	_on_submit_pressed()
+
+func get_last_summary_line() -> String:
+	return _last_summary

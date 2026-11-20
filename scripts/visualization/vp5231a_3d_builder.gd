@@ -187,6 +187,8 @@ static func build_oscilloscope(parent: Node, crt_texture: ViewportTexture) -> Di
 	var probe1 := _build_p6100_probe(parent, 1, "Probe 1 (Yellow)", Color(0.95, 0.80, 0.15, 1.0), interactables, true)
 	var probe2 := _build_p6100_probe(parent, 2, "Probe 2 (Red)", Color(0.90, 0.22, 0.20, 1.0), interactables, false)
 
+	var bb_data := Breadboard3DBuilder.build_breadboard_on_bench(parent, snap_targets, interactables)
+
 	return {
 		"root": root,
 		"crt_material": crt_mat,
