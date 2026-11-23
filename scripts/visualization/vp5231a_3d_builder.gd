@@ -22,10 +22,10 @@ static func build_oscilloscope(parent: Node, crt_texture: ViewportTexture) -> Di
 	# ==================== 1. NATIONAL VP-5231A OSCILLOSCOPE ====================
 	_add_box(root, "Cabinet", Vector3(0.38, 0.19, 0.36), Vector3(0.0, 0.105, 0.0), _mat(COL_CABINET, 0.55, 0.25))
 
-	var foot_mat := _mat(Color(0.10, 0.10, 0.10, 1.0), 0.85, 0.0)
-	for fx in [-0.155, 0.155]:
-		for fz in [-0.14, 0.14]:
-			_add_cyl(root, "Foot", 0.014, 0.012, Vector3(fx, 0.006, fz), Vector3.ZERO, foot_mat)
+	var foot_mat := _mat(Color(0.12, 0.12, 0.13, 1.0), 0.85, 0.0)
+	for fx in [-0.150, 0.150]:
+		for fz in [-0.135, 0.135]:
+			_add_cyl(root, "Foot", 0.018, 0.016, Vector3(fx, 0.008, fz), Vector3.ZERO, foot_mat)
 
 	var handle_mat := _mat(Color(0.28, 0.27, 0.26, 1.0), 0.6, 0.3)
 	_add_box(root, "HandleTop", Vector3(0.22, 0.012, 0.024), Vector3(0.0, 0.222, 0.02), handle_mat)
@@ -79,7 +79,7 @@ static func build_oscilloscope(parent: Node, crt_texture: ViewportTexture) -> Di
 	# CAL 1Vp-p Terminal (Snap Target for Probe Tip)
 	_add_label_3d(root, "CAL 1Vp-p", Vector3(-0.141, strip_y + 0.017, face_z + 0.003), 15, COL_SILKSCREEN)
 	var cal_node := _add_bnc_jack(root, "CAL_HOOK", Vector3(-0.141, strip_y + 0.001, face_z + 0.006), 0.72)
-	snap_targets["CAL_1VPP"] = {"node": cal_node, "kind": "tip", "label": "Scope CAL 1Vp-p (1 kHz Square)", "offset": Vector3(0, 0, 0.008)}
+	snap_targets["CAL_1VPP"] = {"node": cal_node, "kind": "tip", "label": "Scope CAL 1Vp-p (1 kHz Square)", "offset": Vector3(0.0, 0.0005, 0.011)}
 
 	_add_rotary_knob_3d(root, "intensity", "INTENSITY", Vector3(-0.114, strip_y, face_z + 0.003), 0.0095, COL_KNOB_DARK, 0.1, 1.0, 0.05, 0.85, [], interactables)
 	_add_rotary_knob_3d(root, "focus", "FOCUS", Vector3(-0.083, strip_y, face_z + 0.003), 0.0095, COL_KNOB_DARK, 0.1, 1.0, 0.05, 0.88, [], interactables)
@@ -247,8 +247,8 @@ static func _build_p6100_probe(parent: Node, idx: int, label_prefix: String, rin
 	_add_cyl(probe_tip, "TailBoot", 0.0040, 0.018, Vector3(0, 0, 0.090), Vector3(PI * 0.5, 0, 0), dark_boot_mat)
 
 	# Ground Alligator Clip Lead branching off collar
-	_add_cyl(probe_tip, "GndWire", 0.0014, 0.038, Vector3(0.016, -0.006, 0.044), Vector3(PI * 0.45, 0.42, 0), dark_boot_mat)
-	_add_box(probe_tip, "AlligatorClip", Vector3(0.005, 0.005, 0.018), Vector3(0.026, -0.009, 0.064), dark_boot_mat)
+	_add_cyl(probe_tip, "GndWire", 0.0012, 0.026, Vector3(0.007, -0.005, 0.072), Vector3(PI * 0.48, 0.14, 0), dark_boot_mat)
+	_add_box(probe_tip, "AlligatorClip", Vector3(0.004, 0.004, 0.014), Vector3(0.010, -0.006, 0.086), dark_boot_mat)
 
 	var tip_grab := Node3D.new()
 	tip_grab.position = Vector3(0, 0, 0.045)
@@ -317,11 +317,11 @@ static func update_single_probe(probe_data: Dictionary, snaps: Dictionary, bnc_c
 		var info: Dictionary = snaps[tip_tgt]
 		var n: Node3D = info["node"]
 		var offset_v: Vector3 = info["offset"]
-		# Slight offset if both probes clip onto the same CAL terminal
+		# Cleanly seat hook pin onto CAL loop (slight vertical stack if both probes share CAL)
 		if idx == 2 and tip_tgt == "CAL_1VPP":
-			offset_v += Vector3(0.008, -0.005, 0.0)
+			offset_v += Vector3(0.0, -0.0025, 0.001)
 		probe_tip.global_position = n.global_position + offset_v
-		probe_tip.rotation = Vector3(-0.12, 0.20 if tip_tgt == "CAL_1VPP" else -0.15, 0.0)
+		probe_tip.rotation = Vector3(-0.08, -0.06 if tip_tgt == "CAL_1VPP" else -0.15, 0.0)
 	else:
 		# Rest neatly on ESD mat in front of Function Generator
 		var rest_tx := 0.05 if idx == 1 else 0.16

@@ -71,20 +71,20 @@ const LAB_THEMES := [
 		"lamp_energy": 0.0
 	},
 	{
-		"name": "Theme: PENS Campus Lab (4 PM Afternoon)",
+		"name": "Theme: PENS Campus Lab (4 PM Sunset)",
 		"is_campus": true,
-		"desk_col": Color(0.27, 0.16, 0.10),
-		"desk_rough": 0.34,
-		"esd_col": Color(0.06, 0.30, 0.48),
-		"wall_col": Color(0.86, 0.83, 0.75),
-		"bg_col": Color(0.96, 0.86, 0.68),
-		"amb_col": Color(0.95, 0.84, 0.68),
-		"amb_energy": 0.56,
-		"key_col": Color(1.0, 0.80, 0.50),
-		"key_energy": 1.85,
-		"key_rot": Vector3(-0.36, -1.25, 0.0),
+		"desk_col": Color(0.34, 0.21, 0.14),
+		"desk_rough": 0.36,
+		"esd_col": Color(0.06, 0.26, 0.42),
+		"wall_col": Color(0.76, 0.68, 0.66),
+		"bg_col": Color(0.36, 0.30, 0.38),
+		"amb_col": Color(0.46, 0.39, 0.54),
+		"amb_energy": 0.36,
+		"key_col": Color(1.0, 0.72, 0.44),
+		"key_energy": 2.45,
+		"key_rot": Vector3(-0.36, 1.24, 0.0),
 		"lamp_on": false,
-		"lamp_col": Color(1.0, 0.82, 0.54),
+		"lamp_col": Color(1.0, 0.74, 0.46),
 		"lamp_energy": 0.0
 	}
 ]
@@ -172,7 +172,7 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	task_light.omni_attenuation = 1.15
 	task_light.light_color = Color(1.0, 0.80, 0.52)
 	task_light.light_energy = 0.0
-	task_light.shadow_enabled = true
+	task_light.shadow_enabled = false
 	studio_group.add_child(task_light)
 
 	var hanger := _add_box(studio_group, Vector3(0.18, 0.012, 0.045), Vector3(0.68, 0.48, -0.22), Color(0.14, 0.15, 0.18), 0.4)
@@ -195,8 +195,8 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	# SHARED BENCH INSTRUMENTS (Present in both Studio & Campus Lab Modes)
 	# =========================================================================
 	var hdmm := Node3D.new()
-	hdmm.position = Vector3(-0.40, 0.018, 0.29)
-	hdmm.rotation = Vector3(-0.32, 0.38, 0.0)
+	hdmm.position = Vector3(-0.40, 0.019, 0.29)
+	hdmm.rotation = Vector3(0.0, 0.38, 0.0)
 	env_root.add_child(hdmm)
 	_add_box(hdmm, Vector3(0.086, 0.032, 0.165), Vector3(0, 0, 0), Color(0.95, 0.74, 0.10), 0.55)
 	_add_box(hdmm, Vector3(0.072, 0.034, 0.150), Vector3(0, 0.001, 0), Color(0.16, 0.17, 0.20), 0.45)
@@ -329,34 +329,58 @@ static func _build_campus_lab_room(root: Node3D) -> Dictionary:
 			_add_box(root, Vector3(0.05, 0.74, 0.05), Vector3(lx, floor_y + 0.45, lz), Color(0.12, 0.12, 0.14), 0.4)
 
 	# 3. Left Window Wall (x = -3.8) with 4:00 PM Golden Afternoon Sunbeams & Louver Blinds
-	_add_box(root, Vector3(0.12, 3.2, 11.5), Vector3(-3.95, floor_y + 1.60, -1.2), wall_cream, 0.85)
+	var left_wall := _add_box(root, Vector3(0.12, 3.2, 11.5), Vector3(-3.95, floor_y + 1.60, -1.2), wall_cream, 0.85)
+	left_wall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_add_box(root, Vector3(0.62, 0.82, 9.6), Vector3(-3.55, floor_y + 0.41, -1.2), Color(0.66, 0.44, 0.24), 0.55)
 	_add_box(root, Vector3(0.66, 0.04, 9.6), Vector3(-3.53, floor_y + 0.84, -1.2), Color(0.32, 0.35, 0.38), 0.4)
 
-	var slat_mat := StandardMaterial3D.new()
-	slat_mat.albedo_color = Color(1.0, 0.88, 0.64)
-	slat_mat.emission_enabled = true
-	slat_mat.emission = Color(1.0, 0.78, 0.44)
-	slat_mat.emission_energy_multiplier = 1.45
-	for i in range(46):
-		var sz := -4.4 + float(i) * 0.16
-		var slat := _add_box(root, Vector3(0.015, 1.60, 0.085), Vector3(-3.82, floor_y + 1.85, sz), Color(1.0, 0.88, 0.64), 0.4)
-		slat.rotation.y = 0.42
-		slat.material_override = slat_mat
+	# Left-Side Sunset Windows (Peach-Gold Horizon -> Lavender Zenith Gradient + Sills + Curtains)
+	var grad := Gradient.new()
+	grad.colors = PackedColorArray([Color(0.56, 0.48, 0.72), Color(0.96, 0.66, 0.52), Color(1.0, 0.86, 0.58)])
+	grad.offsets = PackedFloat32Array([0.0, 0.52, 1.0])
+	var grad_tex := GradientTexture2D.new()
+	grad_tex.gradient = grad
+	grad_tex.fill_from = Vector2(0.5, 0.0)
+	grad_tex.fill_to = Vector2(0.5, 1.0)
 
-	# Volumetric 4:00 PM Golden Sunbeam Shafts slanting from left windows across the tables
+	var win_mat := StandardMaterial3D.new()
+	win_mat.albedo_texture = grad_tex
+	win_mat.emission_enabled = true
+	win_mat.emission_texture = grad_tex
+	win_mat.emission_energy_multiplier = 1.65
+
+	for wz in [-3.4, -1.6, 0.2]:
+		var pane := _add_box(root, Vector3(0.012, 1.56, 1.44), Vector3(-3.88, floor_y + 1.86, wz), Color(1, 1, 1), 0.25)
+		pane.material_override = win_mat
+		pane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# Window sill ledge
+		_add_box(root, Vector3(0.18, 0.04, 1.56), Vector3(-3.80, floor_y + 1.07, wz), Color(0.78, 0.72, 0.68), 0.5)
+		# Crisp window mullions casting clean geometric sunlight patches onto desks & whiteboard
+		for h_bar in [1.10, 1.62, 2.12, 2.62]:
+			var bar := _add_box(root, Vector3(0.06, 0.045, 1.50), Vector3(-3.82, floor_y + h_bar, wz), Color(0.42, 0.36, 0.34), 0.6)
+			bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		for v_off in [-0.72, 0.0, 0.72]:
+			var vbar := _add_box(root, Vector3(0.06, 1.56, 0.045), Vector3(-3.82, floor_y + 1.86, wz + v_off), Color(0.42, 0.36, 0.34), 0.6)
+			vbar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		# Warm cream curtains framing each window bay
+		for c_off in [-0.66, 0.66]:
+			_add_box(root, Vector3(0.05, 1.64, 0.16), Vector3(-3.76, floor_y + 1.86, wz + c_off), Color(0.86, 0.74, 0.58), 0.75)
+
+	# Diagonal Golden-Peach Sunset Beams slanting from Left Windows toward Front Whiteboard & Desks
 	var beam_mat := StandardMaterial3D.new()
 	beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	beam_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	beam_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	beam_mat.albedo_color = Color(1.0, 0.82, 0.48, 0.065)
-	for bz in [-2.6, -1.0, 0.5]:
+	beam_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	beam_mat.albedo_color = Color(1.0, 0.74, 0.44, 0.032)
+	for bz in [-3.4, -1.6, 0.2]:
 		var beam := MeshInstance3D.new()
 		var bm := BoxMesh.new()
-		bm.size = Vector3(4.6, 1.45, 0.85)
+		bm.size = Vector3(5.6, 1.25, 1.28)
 		beam.mesh = bm
-		beam.position = Vector3(-1.4, floor_y + 1.35, bz)
-		beam.rotation.z = -0.34
+		beam.position = Vector3(-1.15, floor_y + 1.42, bz - 0.35)
+		beam.rotation = Vector3(0.0, -0.18, -0.34)
 		beam.material_override = beam_mat
 		root.add_child(beam)
 
@@ -386,42 +410,55 @@ static func _build_campus_lab_room(root: Node3D) -> Dictionary:
 		_add_box(root, Vector3(0.30, 0.17, 0.24), Vector3(nc.x - 0.28, 0.085, nc.z - 0.10), Color(0.80, 0.79, 0.75), 0.45)
 		_add_box(root, Vector3(0.22, 0.14, 0.20), Vector3(nc.x + 0.25, 0.070, nc.z - 0.10), Color(0.25, 0.27, 0.30), 0.45)
 
-	# 6. Practicum Students in Navy-Blue Lab Jackets (Seated Next to You & in Front Rows) + Walking Student
+	# 6. Detailed Faceted Low-Poly PENS DTE Students (Hijab, Woman, Man) + Walking Aisle Student
 	var seated_students: Array[Dictionary] = []
 	var student_spots := [
-		{"pos": Vector3(-1.85, floor_y, 0.55), "yaw": 0.15, "hijab": true},    # Partner seated at table next to you
-		{"pos": Vector3(-2.35, floor_y, 0.55), "yaw": -0.10, "hijab": false},  # Second student next to you
-		{"pos": Vector3(-0.25, floor_y, -1.10), "yaw": 0.08, "hijab": false},  # Student in front of you
-		{"pos": Vector3(0.35, floor_y, -1.10), "yaw": -0.12, "hijab": true},   # Student in front-right
-		{"pos": Vector3(-1.95, floor_y, -1.10), "yaw": 0.18, "hijab": false},  # Student front-left
-		{"pos": Vector3(0.10, floor_y, -2.60), "yaw": 0.05, "hijab": false}    # Student second row ahead
+		{"pos": Vector3(-1.78, floor_y, 0.56), "yaw": PI - 0.35, "variant": "hijab"},
+		{"pos": Vector3(-2.38, floor_y, 0.62), "yaw": PI + 0.14, "variant": "man"},
+		{"pos": Vector3(-0.28, floor_y, -1.05), "yaw": PI - 0.10, "variant": "woman"},
+		{"pos": Vector3(0.32, floor_y, -1.05), "yaw": PI + 0.12, "variant": "hijab"},
+		{"pos": Vector3(-1.95, floor_y, -1.05), "yaw": PI - 0.15, "variant": "man"},
+		{"pos": Vector3(0.08, floor_y, -2.55), "yaw": PI + 0.06, "variant": "woman"}
 	]
 	for sp in student_spots:
-		var st := _build_student_avatar(root, true, bool(sp["hijab"]))
+		var st := CampusStudentBuilder.build_student(root, String(sp["variant"]), true)
 		st["root"].position = sp["pos"]
 		st["root"].rotation.y = float(sp["yaw"])
 		seated_students.append(st)
 
-	# Walking Student / Lab Assistant moving along the right aisle (z = -3.2 to +1.0)
-	var walker := _build_student_avatar(root, false, false)
-	walker["root"].position = Vector3(1.65, floor_y, -2.2)
+	# Walking Student in the Right Aisle (showcasing DTE + PENS chest crest & yellow sleeve bands)
+	var walker := CampusStudentBuilder.build_student(root, "man", false)
+	walker["root"].position = Vector3(1.92, floor_y, -2.4)
 
+	var rear_group := Node3D.new(); rear_group.name = "RearRoomProps"; root.add_child(rear_group)
 	# 7. Rear Slotted-Angle Steel Racks behind your seat (z = +2.35)
-	_add_box(root, Vector3(2.8, 2.05, 0.55), Vector3(-0.4, floor_y + 1.025, 2.35), Color(0.68, 0.67, 0.64), 0.6)
-	_add_box(root, Vector3(0.45, 0.32, 0.36), Vector3(0.45, floor_y + 0.92, 2.15), Color(0.92, 0.93, 0.94), 0.4)
+	_add_box(rear_group, Vector3(2.8, 2.05, 0.55), Vector3(-0.4, floor_y + 1.025, 2.35), Color(0.68, 0.67, 0.64), 0.6)
+	_add_box(rear_group, Vector3(0.45, 0.32, 0.36), Vector3(0.45, floor_y + 0.92, 2.15), Color(0.92, 0.93, 0.94), 0.4)
 
 	# 8. Acoustic Tile Ceiling + Twin-Tube Fluorescent Lights
-	_add_box(root, Vector3(9.0, 0.08, 11.5), Vector3(-0.3, floor_y + 3.22, -1.2), Color(0.86, 0.86, 0.84), 0.85)
+	var ceil_slab := _add_box(root, Vector3(9.0, 0.08, 11.5), Vector3(-0.3, floor_y + 3.22, -1.2), Color(0.86, 0.86, 0.84), 0.85)
+	ceil_slab.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var tube_mat := StandardMaterial3D.new()
 	tube_mat.albedo_color = Color(1.0, 1.0, 1.0)
 	tube_mat.emission_enabled = true
 	tube_mat.emission = Color(0.96, 0.97, 1.0)
-	tube_mat.emission_energy_multiplier = 1.15
+	tube_mat.emission_energy_multiplier = 0.0
 	for fx in [-1.8, 0.8]:
 		for fz in [-3.4, -1.5, 0.4]:
 			_add_box(root, Vector3(0.28, 0.04, 1.15), Vector3(fx, floor_y + 3.15, fz), Color(0.75, 0.76, 0.78), 0.4)
 			var tube := _add_box(root, Vector3(0.18, 0.02, 1.08), Vector3(fx, floor_y + 3.12, fz), Color(1, 1, 1), 0.2)
 			tube.material_override = tube_mat
+
+	# Warm Golden Window Sunlight Accent angled onto your workbench from the left windows
+	var desk_sun := SpotLight3D.new()
+	desk_sun.position = Vector3(-2.65, 1.15, 0.35)
+	desk_sun.look_at_from_position(Vector3(-2.65, 1.15, 0.35), Vector3(0.10, 0.05, 0.18), Vector3.UP)
+	desk_sun.light_color = Color(1.0, 0.72, 0.42)
+	desk_sun.light_energy = 2.6
+	desk_sun.spot_range = 5.5
+	desk_sun.spot_angle = 42.0
+	desk_sun.shadow_enabled = false
+	root.add_child(desk_sun)
 
 	# 9. Cinematic Floating Dust Motes in 4:00 PM Sunbeams
 	var dust := GPUParticles3D.new()
@@ -446,7 +483,7 @@ static func _build_campus_lab_room(root: Node3D) -> Dictionary:
 	var mote_mat := StandardMaterial3D.new()
 	mote_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mote_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mote_mat.albedo_color = Color(1.0, 0.88, 0.62, 0.55)
+	mote_mat.albedo_color = Color(1.0, 0.88, 0.58, 0.85)
 	mote_mesh.material = mote_mat
 	dust.draw_pass_1 = mote_mesh
 	root.add_child(dust)
@@ -455,59 +492,6 @@ static func _build_campus_lab_room(root: Node3D) -> Dictionary:
 		"seated": seated_students,
 		"walker": walker,
 		"time": 0.0
-	}
-
-static func _build_student_avatar(parent: Node3D, is_seated: bool, has_hijab: bool) -> Dictionary:
-	var av := Node3D.new()
-	parent.add_child(av)
-	var jacket_navy := Color(0.10, 0.14, 0.24)
-	var stripe_gold := Color(0.95, 0.78, 0.14)
-	var skin_col := Color(0.76, 0.58, 0.44)
-	var pants_col := Color(0.16, 0.18, 0.22)
-
-	var hip_y := 0.46 if is_seated else 0.88
-	# Torso (Navy Engineering Practicum Jacket + Yellow Sleeve/Shoulder Stripes)
-	var torso := Node3D.new()
-	torso.position = Vector3(0, hip_y, 0)
-	av.add_child(torso)
-	_add_box(torso, Vector3(0.36, 0.48, 0.20), Vector3(0, 0.24, 0), jacket_navy, 0.65)
-	# Yellow stripe on sleeves/shoulders
-	_add_box(torso, Vector3(0.09, 0.05, 0.11), Vector3(-0.21, 0.36, 0), stripe_gold, 0.5)
-	_add_box(torso, Vector3(0.09, 0.05, 0.11), Vector3(0.21, 0.36, 0), stripe_gold, 0.5)
-
-	# Head + Hair or Hijab
-	var head := Node3D.new()
-	head.position = Vector3(0, 0.56, 0)
-	torso.add_child(head)
-	_add_cyl(head, 0.095, 0.20, Vector3(0, 0.08, 0), skin_col, 0.55)
-	if has_hijab:
-		_add_box(head, Vector3(0.23, 0.26, 0.23), Vector3(0, 0.08, 0.01), Color(0.84, 0.76, 0.74), 0.7)
-	else:
-		_add_box(head, Vector3(0.20, 0.12, 0.21), Vector3(0, 0.15, 0.01), Color(0.10, 0.10, 0.12), 0.6)
-
-	# Arms reaching forward toward bench instruments
-	var arm_l := _add_box(torso, Vector3(0.08, 0.34, 0.08), Vector3(-0.22, 0.26, -0.10 if is_seated else 0.0), jacket_navy, 0.65)
-	var arm_r := _add_box(torso, Vector3(0.08, 0.34, 0.08), Vector3(0.22, 0.26, -0.10 if is_seated else 0.0), jacket_navy, 0.65)
-	if is_seated:
-		arm_l.rotation.x = 0.72
-		arm_r.rotation.x = 0.72
-		torso.rotation.x = -0.16
-
-	# Legs
-	var leg_l := _add_box(av, Vector3(0.12, 0.46 if is_seated else 0.86, 0.13), Vector3(-0.10, 0.23 if is_seated else 0.43, -0.12 if is_seated else 0.0), pants_col, 0.7)
-	var leg_r := _add_box(av, Vector3(0.12, 0.46 if is_seated else 0.86, 0.13), Vector3(0.10, 0.23 if is_seated else 0.43, -0.12 if is_seated else 0.0), pants_col, 0.7)
-	if is_seated:
-		# Lab stool/chair
-		_add_cyl(av, 0.19, 0.04, Vector3(0, 0.44, 0.05), Color(0.22, 0.24, 0.28), 0.5)
-		_add_cyl(av, 0.025, 0.44, Vector3(0, 0.22, 0.05), Color(0.14, 0.15, 0.17), 0.4)
-
-	return {
-		"root": av,
-		"torso": torso,
-		"arm_l": arm_l,
-		"arm_r": arm_r,
-		"leg_l": leg_l,
-		"leg_r": leg_r
 	}
 
 static func animate_lab_life(env_data: Dictionary, delta: float) -> void:
@@ -522,30 +506,37 @@ static func animate_lab_life(env_data: Dictionary, delta: float) -> void:
 	anim["time"] = float(anim.get("time", 0.0)) + delta
 	var t := float(anim["time"])
 
-	# Subtle practicum activity for seated students (adjusting scope knobs & taking notes)
+	# Seated practicum students adjusting oscilloscope knobs & writing lab notes
 	var seated: Array = anim.get("seated", [])
 	for i in range(seated.size()):
 		var st: Dictionary = seated[i]
 		var torso: Node3D = st["torso"]
-		var arm_r: MeshInstance3D = st["arm_r"]
-		var phase := t * 1.4 + float(i) * 1.7
-		torso.rotation.x = -0.16 + sin(phase) * 0.04
-		arm_r.rotation.x = 0.72 + cos(phase * 1.5) * 0.10
+		var head: Node3D = st["head"]
+		var arm_r: Dictionary = st["arm_r"]
+		var phase := t * 1.45 + float(i) * 1.8
+		torso.rotation.x = 0.16 + sin(phase) * 0.035
+		head.rotation.y = sin(phase * 0.6) * 0.14
+		arm_r["shoulder"].rotation.x = -0.84 + cos(phase * 1.5) * 0.10
+		arm_r["elbow"].rotation.x = -0.72 + sin(phase * 1.5) * 0.08
 
-	# Walking student/assistant pacing smoothly along the right aisle (z from -3.1 to +0.8)
+	# Walking student pacing along the right aisle (z = -3.0 to +0.8)
 	var walker: Dictionary = anim.get("walker", {})
 	if not walker.is_empty():
 		var w_root: Node3D = walker["root"]
-		var cycle := fmod(t * 0.22, 2.0)
+		var cycle := fmod(t * 0.20, 2.0)
 		var forward := cycle < 1.0
 		var u := cycle if forward else (2.0 - cycle)
-		w_root.position.z = lerpf(-3.1, 0.8, u)
-		w_root.rotation.y = PI if forward else 0.0
-		var stride := sin(t * 5.2) * 0.38
-		walker["leg_l"].rotation.x = stride
-		walker["leg_r"].rotation.x = -stride
-		walker["arm_l"].rotation.x = -stride * 0.7
-		walker["arm_r"].rotation.x = stride * 0.7
+		w_root.position.z = lerpf(-3.0, 0.8, u)
+		w_root.rotation.y = 0.0 if forward else PI
+		var stride := sin(t * 5.0) * 0.42
+		var knee_bend := maxf(0.0, -sin(t * 5.0)) * 0.48
+		var knee_bend_r := maxf(0.0, sin(t * 5.0)) * 0.48
+		walker["leg_l"]["hip"].rotation.x = stride
+		walker["leg_l"]["knee"].rotation.x = knee_bend
+		walker["leg_r"]["hip"].rotation.x = -stride
+		walker["leg_r"]["knee"].rotation.x = knee_bend_r
+		walker["arm_l"]["shoulder"].rotation.x = -stride * 0.65
+		walker["arm_r"]["shoulder"].rotation.x = stride * 0.65
 
 static func apply_theme(env_data: Dictionary, world_env: WorldEnvironment, key_light: DirectionalLight3D, theme_idx: int) -> void:
 	if env_data.is_empty():
@@ -580,6 +571,10 @@ static func apply_theme(env_data: Dictionary, world_env: WorldEnvironment, key_l
 		world_env.environment.background_color = cfg["bg_col"]
 		world_env.environment.ambient_light_color = cfg["amb_col"]
 		world_env.environment.ambient_light_energy = float(cfg["amb_energy"])
+		world_env.environment.tonemap_mode = Environment.TONE_MAPPER_ACES if is_campus else Environment.TONE_MAPPER_LINEAR
+		world_env.environment.glow_enabled = is_campus
+		world_env.environment.glow_intensity = 0.32
+		world_env.environment.glow_bloom = 0.12
 	if key_light != null:
 		key_light.light_color = cfg["key_col"]
 		key_light.light_energy = float(cfg["key_energy"])
@@ -640,3 +635,27 @@ static func _add_joint_sphere(parent: Node3D, pos: Vector3, rad: float, col: Col
 	mat.metallic = 0.78
 	mi.material_override = mat
 	parent.add_child(mi)
+
+static func update_view_occlusion(env_data: Dictionary, cam: Camera3D) -> void:
+	if env_data.is_empty() or cam == null:
+		return
+	var campus_group: Node3D = env_data.get("campus_group")
+	if campus_group == null or not campus_group.visible:
+		return
+	var cam_fwd := -cam.global_transform.basis.z
+	var cam_pos := cam.global_transform.origin
+	var rear_group := campus_group.get_node_or_null("RearRoomProps") as Node3D
+	if rear_group != null:
+		# Only render rear storage racks behind the player if camera turns backward (+Z)
+		rear_group.visible = cam_fwd.z > -0.15
+	# Cull any student avatar outside the camera's forward cone (dot < -0.15)
+	var anim: Dictionary = env_data.get("campus_anim", {})
+	for st in anim.get("seated", []):
+		var r: Node3D = st["root"]
+		var to_obj := (r.global_position + Vector3(0, 0.7, 0) - cam_pos).normalized()
+		r.visible = cam_fwd.dot(to_obj) > -0.15
+	var walker: Dictionary = anim.get("walker", {})
+	if not walker.is_empty():
+		var wr: Node3D = walker["root"]
+		var to_w := (wr.global_position + Vector3(0, 0.8, 0) - cam_pos).normalized()
+		wr.visible = cam_fwd.dot(to_w) > -0.15

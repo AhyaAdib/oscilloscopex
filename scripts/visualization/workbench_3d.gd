@@ -108,6 +108,7 @@ func _process(delta: float) -> void:
 				_m_res_lbl.text = SimState.last_mission_report
 
 	LabEnvironmentBuilder.animate_lab_life(_env_data, delta)
+	LabEnvironmentBuilder.update_view_occlusion(_env_data, _camera)
 
 	# 3. Subtle pulsing glow on the active cyan-blue selection ring
 	if _hover_ring != null and _hover_ring.visible and _ring_mat != null:
@@ -115,7 +116,8 @@ func _process(delta: float) -> void:
 
 func _build_3d_scene() -> void:
 	_crt_vp = SubViewport.new()
-	_crt_vp.size = Vector2i(640, 460)
+	_crt_vp.size = Vector2i(480, 345)
+	_crt_vp.msaa_3d = Viewport.MSAA_DISABLED
 	_crt_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_crt_vp)
 
@@ -124,8 +126,11 @@ func _build_3d_scene() -> void:
 	_crt_vp.add_child(crt_canvas)
 
 	_main_vp = SubViewport.new()
-	_main_vp.size = Vector2i(1200, 620)
+	_main_vp.size = Vector2i(1024, 540)
 	_main_vp.own_world_3d = true
+	_main_vp.use_occlusion_culling = true
+	_main_vp.msaa_3d = Viewport.MSAA_DISABLED
+	_main_vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	_main_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_main_vp)
 
