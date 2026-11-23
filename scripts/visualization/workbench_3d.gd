@@ -145,6 +145,7 @@ func _build_3d_scene() -> void:
 	_main_vp.add_child(_world_env)
 
 	var key_light := DirectionalLight3D.new()
+	self._key_light = key_light
 	key_light.look_at_from_position(Vector3(0.4, 0.9, 0.85), Vector3(0.0, 0.1, 0.15), Vector3.UP)
 	key_light.light_energy = 1.15
 	_main_vp.add_child(key_light)
@@ -540,7 +541,7 @@ func _handle_probe_drag(local_pos: Vector2) -> void:
 			continue
 		var target_node: Node3D = info["node"]
 		var snap_pos: Vector3 = target_node.global_position + info["offset"]
-		var d := Vector2(world_pt.x, world_pt.y).distance_to(Vector2(snap_pos.x, snap_pos.y))
+		var d := world_pt.distance_to(snap_pos)
 		if d < nearest_dist:
 			nearest_dist = d
 			nearest_key = key
@@ -570,7 +571,7 @@ func _finish_probe_drop(local_pos: Vector2) -> void:
 			continue
 		var target_node: Node3D = info["node"]
 		var snap_pos: Vector3 = target_node.global_position + info["offset"]
-		var d := Vector2(world_pt.x, world_pt.y).distance_to(Vector2(snap_pos.x, snap_pos.y))
+		var d := world_pt.distance_to(snap_pos)
 		if d < nearest_dist:
 			nearest_dist = d
 			nearest_key = key
@@ -781,3 +782,10 @@ func _sync_visuals() -> void:
 			if done_count == steps.size():
 				lines.append("  >>> SCOPE CALIBRATED! Now drag Probe Tip to Siglent CH1 OUT or CH2 OUT! <<<")
 			_checklist_lbl.text = "\n".join(lines)
+
+
+func _clear_camera_preset_buttons() -> void:
+	if "_preset_buttons" in self:
+		for btn in _preset_buttons:
+			if is_instance_valid(btn) and "button_pressed" in btn:
+				btn.button_pressed = false

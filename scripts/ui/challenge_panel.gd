@@ -312,8 +312,7 @@ func _on_submit_pressed() -> void:
 	if res["passed"] or time_remaining <= 0.0:
 		SimState.last_mission_report = "FINAL: %d/100 (%s) | Attempts: %d (Fails: %d) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "TIME UP", SimState.submission_attempts, SimState.failed_attempts, res["true_vpp"], res["true_freq"], res["true_offset"]]
 	else:
-		SimState.last_mission_report = "Score: %d/100 — KEEP GOING! | Attempts: %d (Fails: %d)\nHint: Route:%s | Comp:%s | Trig:%s | Vpp:%s | Freq:%s" % [res["total_score"], SimState.submission_attempts, SimState.failed_attempts, "OK" if res["routing_ok"] else "NO", "OK" if res["comp_ok"] else "OFF", "OK" if res["trig_ok"] else "NO", "OK" if res["vpp_ok"] else "ERR", "OK" if res["freq_ok"] else "ERR"]
-	SimState.last_mission_report = "Score: %d/100 (%s) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "RETRY", res["true_vpp"], res["true_freq"], res["true_offset"]]
+		SimState.last_mission_report = "Score: %d/100 — KEEP GOING! | Attempts: %d (Fails: %d) | Route:%s | Comp:%s | Trig:%s | Vpp:%s | Freq:%s" % [res["total_score"], SimState.submission_attempts, SimState.failed_attempts, "OK" if res["routing_ok"] else "NO", "OK" if res["comp_ok"] else "OFF", "OK" if res["trig_ok"] else "NO", "OK" if res["vpp_ok"] else "ERR", "OK" if res["freq_ok"] else "ERR"]
 	_result_lbl.text = "\n".join(lines)
 
 func _update_timer_display() -> void:

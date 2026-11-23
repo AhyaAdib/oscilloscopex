@@ -43,6 +43,7 @@ const TIME_LABELS: Array[String] = ["0.1ms", "0.2ms", "0.5ms", "1ms", "2ms", "5m
 func _ready() -> void:
 	print("[Oscilloscope Lab] Milestone 4/5 Synced Boot | Renderer: ", RenderingServer.get_video_adapter_name())
 	_build_workspace()
+	SimState.state_updated.connect(func(_dt := 0.0): _sync_selector_states())
 	SimState.state_updated.connect(_sync_2d_from_state)
 	_sync_2d_from_state()
 
@@ -611,3 +612,20 @@ func _add_compact_slider(parent: Control, param_key: String, name_txt: String, m
 	)
 	box.add_child(s)
 	_gen_sliders[param_key] = {"slider": s, "label": val_lbl}
+
+
+func _sync_selector_states() -> void:
+	var mode_opt := get_node_or_null("%ModeOption") as OptionButton
+	if mode_opt != null and "lab_mode" in SimState:
+		for i in range(mode_opt.item_count):
+			if mode_opt.get_item_text(i).to_upper() == String(SimState.lab_mode).to_upper():
+				mode_opt.select(i)
+				break
+	var theme_opt := get_node_or_null("%ThemeOption") as OptionButton
+	if theme_opt != null and "lab_theme_idx" in SimState:
+		if SimState.lab_theme_idx >= 0 and SimState.lab_theme_idx < theme_opt.item_count:
+			theme_opt.select(SimState.lab_theme_idx)
+	var fg_ch_opt := get_node_or_null("%FgChOption") as OptionButton
+	if fg_ch_opt != null and "fg_selected_ch" in SimState:
+		if SimState.fg_selected_ch >= 0 and SimState.fg_selected_ch < fg_ch_opt.item_count:
+			fg_ch_opt.select(SimState.fg_selected_ch)

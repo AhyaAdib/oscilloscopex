@@ -200,7 +200,8 @@ static func build_oscilloscope(parent: Node, crt_texture: ViewportTexture) -> Di
 		"fg_wf_lbl": fg_wf_lbl,
 		"fg_freq_lbl": fg_freq_lbl,
 		"fg_amp_lbl": fg_amp_lbl,
-		"interactables": interactables
+		"interactables": interactables,
+		"breadboard": bb_data
 	}
 
 static func _build_p6100_probe(parent: Node, idx: int, label_prefix: String, ring_color: Color, interactables: Array[Dictionary], has_atten_switch: bool) -> Dictionary:
