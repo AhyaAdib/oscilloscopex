@@ -4,6 +4,7 @@ extends RefCounted
 const LAB_THEMES := [
 	{
 		"name": "Theme: Daylight Studio",
+		"is_campus": false,
 		"desk_col": Color(0.86, 0.85, 0.82),
 		"desk_rough": 0.55,
 		"esd_col": Color(0.07, 0.38, 0.68),
@@ -13,12 +14,14 @@ const LAB_THEMES := [
 		"amb_energy": 0.65,
 		"key_col": Color(1.0, 0.98, 0.95),
 		"key_energy": 1.35,
+		"key_rot": Vector3(-0.75, 0.55, 0.0),
 		"lamp_on": false,
 		"lamp_col": Color(1.0, 0.82, 0.55),
 		"lamp_energy": 0.0
 	},
 	{
 		"name": "Theme: Dark Wood + Overhead Lamp",
+		"is_campus": false,
 		"desk_col": Color(0.24, 0.14, 0.08),
 		"desk_rough": 0.42,
 		"esd_col": Color(0.05, 0.22, 0.38),
@@ -28,12 +31,14 @@ const LAB_THEMES := [
 		"amb_energy": 0.22,
 		"key_col": Color(0.65, 0.74, 0.90),
 		"key_energy": 0.30,
+		"key_rot": Vector3(-0.75, 0.55, 0.0),
 		"lamp_on": true,
 		"lamp_col": Color(1.0, 0.80, 0.52),
 		"lamp_energy": 2.60
 	},
 	{
 		"name": "Theme: Midnight R&D Neon",
+		"is_campus": false,
 		"desk_col": Color(0.12, 0.13, 0.16),
 		"desk_rough": 0.38,
 		"esd_col": Color(0.04, 0.28, 0.42),
@@ -43,12 +48,14 @@ const LAB_THEMES := [
 		"amb_energy": 0.28,
 		"key_col": Color(0.55, 0.85, 1.0),
 		"key_energy": 0.45,
+		"key_rot": Vector3(-0.75, 0.55, 0.0),
 		"lamp_on": true,
 		"lamp_col": Color(0.35, 0.92, 1.0),
 		"lamp_energy": 2.20
 	},
 	{
 		"name": "Theme: Classic University Lab",
+		"is_campus": false,
 		"desk_col": Color(0.56, 0.40, 0.24),
 		"desk_rough": 0.58,
 		"esd_col": Color(0.08, 0.34, 0.26),
@@ -58,8 +65,26 @@ const LAB_THEMES := [
 		"amb_energy": 0.58,
 		"key_col": Color(1.0, 0.96, 0.86),
 		"key_energy": 1.15,
+		"key_rot": Vector3(-0.75, 0.55, 0.0),
 		"lamp_on": false,
 		"lamp_col": Color(1.0, 0.90, 0.70),
+		"lamp_energy": 0.0
+	},
+	{
+		"name": "Theme: PENS Campus Lab (4 PM Afternoon)",
+		"is_campus": true,
+		"desk_col": Color(0.27, 0.16, 0.10),
+		"desk_rough": 0.34,
+		"esd_col": Color(0.06, 0.30, 0.48),
+		"wall_col": Color(0.86, 0.83, 0.75),
+		"bg_col": Color(0.96, 0.86, 0.68),
+		"amb_col": Color(0.95, 0.84, 0.68),
+		"amb_energy": 0.56,
+		"key_col": Color(1.0, 0.80, 0.50),
+		"key_energy": 1.85,
+		"key_rot": Vector3(-0.36, -1.25, 0.0),
+		"lamp_on": false,
+		"lamp_col": Color(1.0, 0.82, 0.54),
 		"lamp_energy": 0.0
 	}
 ]
@@ -69,11 +94,15 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	env_root.name = "StudioElectronicsLab"
 	parent.add_child(env_root)
 
-	# 1. Electronics Lab Desk + Steel Frame Legs
+	# 1. Primary Workbench Desk + Heavy Frame Legs + Campus Under-Apron AC Outlet Block
 	var desk := _add_box(env_root, Vector3(1.85, 0.04, 1.12), Vector3(0.02, -0.02, 0.14), Color(0.86, 0.85, 0.82), 0.55)
 	for lx in [-0.82, 0.86]:
 		for lz in [-0.34, 0.62]:
-			_add_box(env_root, Vector3(0.04, 0.72, 0.04), Vector3(lx, -0.38, lz), Color(0.18, 0.20, 0.23), 0.45)
+			_add_box(env_root, Vector3(0.05, 0.72, 0.05), Vector3(lx, -0.38, lz), Color(0.14, 0.11, 0.09), 0.45)
+
+	var outlet_box := _add_box(env_root, Vector3(0.16, 0.042, 0.032), Vector3(-0.34, -0.062, 0.685), Color(0.86, 0.85, 0.81), 0.4)
+	for ox in [-0.052, -0.018, 0.018, 0.052]:
+		_add_cyl(outlet_box, 0.011, 0.006, Vector3(ox, 0.0, 0.016), Color(0.16, 0.16, 0.18), 0.4).rotation.x = PI * 0.5
 
 	# 2. ESD Anti-Static Mat + Grounding Snap Puck + Precision Stylus
 	var esd := _add_box(env_root, Vector3(1.12, 0.003, 0.68), Vector3(0.02, 0.0015, 0.18), Color(0.07, 0.38, 0.68), 0.60)
@@ -82,11 +111,17 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	var pen := _add_cyl(env_root, 0.0028, 0.11, Vector3(-0.18, 0.0055, 0.16), Color(0.14, 0.16, 0.20), 0.35, 0.4)
 	pen.rotation.z = PI * 0.5
 
-	# 3. Studio Wall + Wall-Mounted Widescreen Monitor + Vertical Patch Cables
-	var wall := _add_box(env_root, Vector3(2.4, 1.35, 0.04), Vector3(0.02, 0.58, -0.26), Color(0.88, 0.87, 0.84), 0.85)
-	_add_box(env_root, Vector3(0.04, 0.48, 0.03), Vector3(-0.34, 0.24, -0.22), Color(0.10, 0.11, 0.13), 0.4)
-	_add_box(env_root, Vector3(0.58, 0.34, 0.024), Vector3(-0.16, 0.43, -0.20), Color(0.09, 0.10, 0.12), 0.35)
-	var mon_scr := _add_box(env_root, Vector3(0.55, 0.31, 0.003), Vector3(-0.16, 0.43, -0.187), Color(0.04, 0.06, 0.09), 0.15)
+	# =========================================================================
+	# STUDIO PROPS GROUP
+	# =========================================================================
+	var studio_group := Node3D.new()
+	studio_group.name = "StudioRoomProps"
+	env_root.add_child(studio_group)
+
+	var wall := _add_box(studio_group, Vector3(2.4, 1.35, 0.04), Vector3(0.02, 0.58, -0.26), Color(0.88, 0.87, 0.84), 0.85)
+	_add_box(studio_group, Vector3(0.04, 0.48, 0.03), Vector3(-0.34, 0.24, -0.22), Color(0.10, 0.11, 0.13), 0.4)
+	_add_box(studio_group, Vector3(0.58, 0.34, 0.024), Vector3(-0.16, 0.43, -0.20), Color(0.09, 0.10, 0.12), 0.35)
+	var mon_scr := _add_box(studio_group, Vector3(0.55, 0.31, 0.003), Vector3(-0.16, 0.43, -0.187), Color(0.04, 0.06, 0.09), 0.15)
 	var scr_mat := StandardMaterial3D.new()
 	scr_mat.albedo_color = Color(0.04, 0.06, 0.09)
 	scr_mat.emission_enabled = true
@@ -100,22 +135,30 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	]
 	for i in range(10):
 		var cx := -0.34 + float(i) * 0.036
-		_add_cyl(env_root, 0.0024, 0.26, Vector3(cx, 0.14, -0.215), cable_colors[i % cable_colors.size()], 0.5)
+		_add_cyl(studio_group, 0.0024, 0.26, Vector3(cx, 0.14, -0.215), cable_colors[i % cable_colors.size()], 0.5)
 
-	# 4. Articulated Overhead Desk Task Lamp (illuminates bench in Dark Wood / Midnight themes)
+	# Articulated Overhead Desk Task Lamp
 	var lamp_arm := Node3D.new()
-	lamp_arm.position = Vector3(-0.56, 0.0, -0.12)
-	env_root.add_child(lamp_arm)
-	_add_cyl(lamp_arm, 0.038, 0.016, Vector3(0.0, 0.008, 0.0), Color(0.14, 0.15, 0.17), 0.4, 0.6)
-	var strut1 := _add_cyl(lamp_arm, 0.007, 0.32, Vector3(0.04, 0.16, 0.04), Color(0.16, 0.17, 0.19), 0.35, 0.7)
-	strut1.rotation = Vector3(0.24, 0.0, -0.22)
-	var strut2 := _add_cyl(lamp_arm, 0.006, 0.34, Vector3(0.22, 0.35, 0.16), Color(0.16, 0.17, 0.19), 0.35, 0.7)
-	strut2.rotation = Vector3(0.45, 0.0, -1.15)
-	# Lamp shade & glowing LED emitter bar hovering above the workbench
-	var shade := _add_box(lamp_arm, Vector3(0.26, 0.018, 0.048), Vector3(0.48, 0.40, 0.28), Color(0.12, 0.13, 0.15), 0.35)
-	shade.rotation.y = -0.15
-	var bulb_bar := _add_box(lamp_arm, Vector3(0.23, 0.005, 0.032), Vector3(0.48, 0.390, 0.28), Color(1.0, 0.85, 0.60), 0.2)
-	bulb_bar.rotation.y = -0.15
+	lamp_arm.position = Vector3(-0.56, 0.0, -0.10)
+	studio_group.add_child(lamp_arm)
+
+	var p_base := Vector3(0.0, 0.016, 0.0)
+	var p_elbow := Vector3(0.05, 0.30, 0.05)
+	var p_wrist := Vector3(0.46, 0.44, 0.24)
+	var p_head := Vector3(0.46, 0.415, 0.24)
+
+	_add_cyl(lamp_arm, 0.044, 0.016, Vector3(0.0, 0.008, 0.0), Color(0.12, 0.13, 0.15), 0.4, 0.65)
+	_add_cyl(lamp_arm, 0.014, 0.024, Vector3(0.0, 0.020, 0.0), Color(0.18, 0.19, 0.22), 0.35, 0.75)
+	_add_strut(lamp_arm, p_base, p_elbow, 0.0085, Color(0.15, 0.16, 0.18))
+	_add_joint_sphere(lamp_arm, p_elbow, 0.013, Color(0.22, 0.24, 0.28))
+	_add_strut(lamp_arm, p_elbow, p_wrist, 0.0075, Color(0.15, 0.16, 0.18))
+	_add_joint_sphere(lamp_arm, p_wrist, 0.012, Color(0.22, 0.24, 0.28))
+	_add_strut(lamp_arm, p_wrist, p_head, 0.0070, Color(0.18, 0.19, 0.22))
+
+	var shade := _add_box(lamp_arm, Vector3(0.28, 0.018, 0.050), p_head + Vector3(0.0, -0.006, 0.0), Color(0.12, 0.13, 0.15), 0.35)
+	shade.rotation.y = -0.14
+	var bulb_bar := _add_box(lamp_arm, Vector3(0.25, 0.005, 0.034), p_head + Vector3(0.0, -0.016, 0.0), Color(1.0, 0.85, 0.60), 0.2)
+	bulb_bar.rotation.y = -0.14
 	var bulb_mat := StandardMaterial3D.new()
 	bulb_mat.albedo_color = Color(1.0, 0.88, 0.68)
 	bulb_mat.emission_enabled = true
@@ -124,23 +167,39 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	bulb_bar.material_override = bulb_mat
 
 	var task_light := OmniLight3D.new()
-	task_light.position = Vector3(-0.04, 0.36, 0.18)
+	task_light.position = Vector3(-0.10, 0.38, 0.14)
 	task_light.omni_range = 1.65
 	task_light.omni_attenuation = 1.15
 	task_light.light_color = Color(1.0, 0.80, 0.52)
 	task_light.light_energy = 0.0
 	task_light.shadow_enabled = true
-	env_root.add_child(task_light)
+	studio_group.add_child(task_light)
 
-	# 5. Detailed Handheld Yellow Digital Multimeter (Fluke-style DMM on Left ESD Mat)
+	var hanger := _add_box(studio_group, Vector3(0.18, 0.012, 0.045), Vector3(0.68, 0.48, -0.22), Color(0.14, 0.15, 0.18), 0.4)
+	hanger.rotation.y = -0.25
+	for k in range(8):
+		var lx := 0.61 + float(k) * 0.020
+		var l_len := 0.34 + float(k % 3) * 0.05
+		_add_cyl(studio_group, 0.0020, l_len, Vector3(lx, 0.48 - l_len * 0.5, -0.205), cable_colors[k % cable_colors.size()], 0.45)
+
+	# =========================================================================
+	# CAMPUS ELECTRONICS LAB ROOM (Back-Row View at 4:00 PM Golden Afternoon)
+	# =========================================================================
+	var campus_group := Node3D.new()
+	campus_group.name = "CampusElectronicsLabRoom"
+	campus_group.visible = false
+	env_root.add_child(campus_group)
+	var campus_anim := _build_campus_lab_room(campus_group)
+
+	# =========================================================================
+	# SHARED BENCH INSTRUMENTS (Present in both Studio & Campus Lab Modes)
+	# =========================================================================
 	var hdmm := Node3D.new()
 	hdmm.position = Vector3(-0.40, 0.018, 0.29)
 	hdmm.rotation = Vector3(-0.32, 0.38, 0.0)
 	env_root.add_child(hdmm)
-	# Yellow protective rubber holster + dark grey inner chassis
 	_add_box(hdmm, Vector3(0.086, 0.032, 0.165), Vector3(0, 0, 0), Color(0.95, 0.74, 0.10), 0.55)
 	_add_box(hdmm, Vector3(0.072, 0.034, 0.150), Vector3(0, 0.001, 0), Color(0.16, 0.17, 0.20), 0.45)
-	# Backlit LCD display window
 	var hdmm_lcd := _add_box(hdmm, Vector3(0.056, 0.003, 0.036), Vector3(0, 0.0185, -0.044), Color(0.08, 0.22, 0.18), 0.2)
 	var hlcd_mat := StandardMaterial3D.new()
 	hlcd_mat.albedo_color = Color(0.08, 0.22, 0.18)
@@ -148,13 +207,10 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	hlcd_mat.emission = Color(0.18, 0.75, 0.58)
 	hlcd_mat.emission_energy_multiplier = 0.85
 	hdmm_lcd.material_override = hlcd_mat
-	# Yellow function pushbuttons row
 	for bx in [-0.018, -0.006, 0.006, 0.018]:
 		_add_box(hdmm, Vector3(0.008, 0.004, 0.006), Vector3(bx, 0.019, -0.018), Color(0.95, 0.76, 0.12), 0.4)
-	# Central Rotary Range Selector Dial + Indicator Bar
 	_add_cyl(hdmm, 0.019, 0.008, Vector3(0, 0.020, 0.010), Color(0.22, 0.24, 0.28), 0.35)
 	_add_box(hdmm, Vector3(0.004, 0.010, 0.034), Vector3(0, 0.021, 0.010), Color(0.92, 0.93, 0.95), 0.3)
-	# 3 Shrouded Banana Input Jacks (10A Red, COM Black, V/Ohm Red)
 	var jack_specs := [
 		[-0.020, Color(0.85, 0.15, 0.15)],
 		[0.0, Color(0.10, 0.11, 0.13)],
@@ -164,7 +220,6 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 		_add_cyl(hdmm, 0.0055, 0.006, Vector3(js[0], 0.019, 0.054), js[1], 0.35)
 		_add_cyl(hdmm, 0.0025, 0.007, Vector3(js[0], 0.0195, 0.054), Color(0.82, 0.72, 0.28), 0.25, 0.85)
 
-	# 6. Companion Modern Widescreen DSO Unit (Center-Back)
 	var dso_root := Node3D.new()
 	dso_root.position = Vector3(0.02, 0.0, 0.01)
 	env_root.add_child(dso_root)
@@ -181,7 +236,6 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	for bx in [-0.08, -0.045, -0.01, 0.025]:
 		_add_cyl(dso_root, 0.0055, 0.014, Vector3(bx, 0.014, 0.065), Color(0.78, 0.80, 0.83), 0.25, 0.85).rotation.x = PI * 0.5
 
-	# 7. Wooden Plywood Instrument Shelf Rack (Right Side) + Detailed Benchtop DMM & Dual PSU
 	var rack_x := 0.25
 	var rack_z := 0.04
 	var wood_col := Color(0.76, 0.62, 0.44)
@@ -190,7 +244,6 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	_add_box(env_root, Vector3(0.306, 0.016, 0.24), Vector3(rack_x, 0.175, rack_z), wood_col, 0.72)
 	_add_box(env_root, Vector3(0.306, 0.016, 0.24), Vector3(rack_x, 0.375, rack_z), wood_col, 0.72)
 
-	# Top Shelf: Detailed Benchtop Digital Multimeter (VFD readout + button keypad + HI/LO terminals)
 	_add_box(env_root, Vector3(0.25, 0.082, 0.21), Vector3(rack_x, 0.325, rack_z), Color(0.82, 0.81, 0.77), 0.45)
 	_add_box(env_root, Vector3(0.236, 0.072, 0.004), Vector3(rack_x, 0.325, rack_z + 0.105), Color(0.22, 0.24, 0.27), 0.4)
 	var dmm_disp := _add_box(env_root, Vector3(0.115, 0.028, 0.003), Vector3(rack_x - 0.048, 0.338, rack_z + 0.108), Color(0.04, 0.16, 0.12), 0.2)
@@ -207,7 +260,6 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	for idx_j in range(dmm_jacks.size()):
 		_add_cyl(env_root, 0.005, 0.011, Vector3(rack_x + 0.095, 0.342 - float(idx_j) * 0.018, rack_z + 0.109), dmm_jacks[idx_j], 0.35).rotation.x = PI * 0.5
 
-	# Middle Shelf: Dual-Channel DC Power Supply (LED readouts + V/A knobs + output binding posts)
 	_add_box(env_root, Vector3(0.25, 0.088, 0.21), Vector3(rack_x, 0.232, rack_z), Color(0.22, 0.24, 0.27), 0.45)
 	var psu_disp := _add_box(env_root, Vector3(0.105, 0.042, 0.003), Vector3(rack_x - 0.052, 0.238, rack_z + 0.106), Color(0.05, 0.11, 0.20), 0.2)
 	var psu_mat := StandardMaterial3D.new()
@@ -223,14 +275,12 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 		var pc := Color(0.85, 0.15, 0.15) if px != 0.045 else Color(0.16, 0.68, 0.32)
 		_add_cyl(env_root, 0.0045, 0.011, Vector3(rack_x + px, 0.198, rack_z + 0.109), pc, 0.35).rotation.x = PI * 0.5
 
-	# 8. Detailed Analog Panel Meter Unit + Bench Soldering Iron Stand (Right Side)
 	var meter_root := Node3D.new()
 	meter_root.position = Vector3(0.49, 0.0, 0.15)
 	meter_root.rotation.y = -0.35
 	env_root.add_child(meter_root)
 	_add_box(meter_root, Vector3(0.115, 0.155, 0.10), Vector3(0.0, 0.0775, 0.0), Color(0.30, 0.32, 0.35), 0.45)
 	_add_box(meter_root, Vector3(0.092, 0.068, 0.004), Vector3(0.0, 0.108, 0.051), Color(0.95, 0.94, 0.90), 0.25)
-	# Meter scale arc & physical pointer needle
 	_add_box(meter_root, Vector3(0.068, 0.003, 0.002), Vector3(0.0, 0.122, 0.0535), Color(0.12, 0.12, 0.14), 0.4)
 	var needle := _add_box(meter_root, Vector3(0.002, 0.036, 0.002), Vector3(-0.008, 0.106, 0.0535), Color(0.85, 0.14, 0.14), 0.3)
 	needle.rotation.z = 0.32
@@ -238,26 +288,264 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 		var b_c := Color(0.85, 0.15, 0.15) if b_x != 0.0 else Color(0.12, 0.12, 0.14)
 		_add_cyl(meter_root, 0.0055, 0.014, Vector3(b_x, 0.032, 0.055), b_c, 0.35).rotation.x = PI * 0.5
 
-	# Compact Solder Spool + Precision Tweezers near right edge of mat
 	_add_cyl(env_root, 0.018, 0.032, Vector3(0.45, 0.018, 0.32), Color(0.18, 0.42, 0.78), 0.45)
 	_add_cyl(env_root, 0.014, 0.022, Vector3(0.45, 0.018, 0.32), Color(0.76, 0.78, 0.80), 0.25, 0.85)
-
-	# 9. Wall-Mounted BNC & Banana Test Lead Hanging Rack (Far Right Wall)
-	var hanger := _add_box(env_root, Vector3(0.18, 0.012, 0.045), Vector3(0.68, 0.48, -0.22), Color(0.14, 0.15, 0.18), 0.4)
-	hanger.rotation.y = -0.25
-	var lead_cols := [Color(0.88, 0.16, 0.16), Color(0.14, 0.15, 0.17), Color(0.92, 0.78, 0.16), Color(0.16, 0.68, 0.34)]
-	for k in range(8):
-		var lx := 0.61 + float(k) * 0.020
-		var l_len := 0.34 + float(k % 3) * 0.05
-		_add_cyl(env_root, 0.0020, l_len, Vector3(lx, 0.48 - l_len * 0.5, -0.205), lead_cols[k % lead_cols.size()], 0.45)
 
 	return {
 		"desk_mat": desk.material_override,
 		"esd_mat": esd.material_override,
 		"wall_mat": wall.material_override,
 		"bulb_mat": bulb_mat,
-		"task_light": task_light
+		"task_light": task_light,
+		"studio_group": studio_group,
+		"campus_group": campus_group,
+		"campus_anim": campus_anim
 	}
+
+static func _build_campus_lab_room(root: Node3D) -> Dictionary:
+	# User's bench is positioned at the back-right row (z=0), looking forward toward the front whiteboard (z=-4.8)
+	var floor_y := -0.74
+	var wall_cream := Color(0.88, 0.85, 0.77)
+	var mahogany := Color(0.27, 0.16, 0.10)
+	var tile_dark := Color(0.23, 0.24, 0.26)
+
+	# 1. Charcoal Ceramic Tiled Floor + White PVC Cable Conduits
+	_add_box(root, Vector3(9.0, 0.04, 11.5), Vector3(-0.3, floor_y - 0.02, -1.2), tile_dark, 0.32)
+	for tz in [-3.2, -1.7, -0.2, 1.3]:
+		_add_box(root, Vector3(5.6, 0.008, 0.035), Vector3(-0.5, floor_y + 0.004, tz), Color(0.90, 0.90, 0.88), 0.4)
+
+	# 2. Front Classroom Wall (z = -4.9) with Raised Wooden Lecturer Stage, Whiteboard, Clock & 5R Poster
+	_add_box(root, Vector3(9.0, 3.2, 0.12), Vector3(-0.3, floor_y + 1.60, -4.9), wall_cream, 0.85)
+	_add_box(root, Vector3(4.8, 0.10, 1.65), Vector3(0.5, floor_y + 0.05, -4.0), Color(0.32, 0.22, 0.14), 0.55)
+	_add_box(root, Vector3(2.95, 1.22, 0.03), Vector3(0.55, floor_y + 1.72, -4.82), Color(0.96, 0.97, 0.98), 0.16)
+	_add_box(root, Vector3(3.00, 0.04, 0.07), Vector3(0.55, floor_y + 1.10, -4.80), Color(0.72, 0.74, 0.76), 0.35)
+	_add_cyl(root, 0.16, 0.03, Vector3(0.55, floor_y + 2.55, -4.82), Color(0.95, 0.95, 0.94), 0.3).rotation.x = PI * 0.5
+	_add_box(root, Vector3(0.68, 0.94, 0.025), Vector3(2.55, floor_y + 1.68, -4.82), Color(0.76, 0.78, 0.74), 0.6)
+
+	# Lecturer Table on Front Stage
+	_add_box(root, Vector3(1.55, 0.04, 0.78), Vector3(0.55, floor_y + 0.84, -3.75), mahogany, 0.38)
+	for lx in [-0.15, 1.25]:
+		for lz in [-4.08, -3.42]:
+			_add_box(root, Vector3(0.05, 0.74, 0.05), Vector3(lx, floor_y + 0.45, lz), Color(0.12, 0.12, 0.14), 0.4)
+
+	# 3. Left Window Wall (x = -3.8) with 4:00 PM Golden Afternoon Sunbeams & Louver Blinds
+	_add_box(root, Vector3(0.12, 3.2, 11.5), Vector3(-3.95, floor_y + 1.60, -1.2), wall_cream, 0.85)
+	_add_box(root, Vector3(0.62, 0.82, 9.6), Vector3(-3.55, floor_y + 0.41, -1.2), Color(0.66, 0.44, 0.24), 0.55)
+	_add_box(root, Vector3(0.66, 0.04, 9.6), Vector3(-3.53, floor_y + 0.84, -1.2), Color(0.32, 0.35, 0.38), 0.4)
+
+	var slat_mat := StandardMaterial3D.new()
+	slat_mat.albedo_color = Color(1.0, 0.88, 0.64)
+	slat_mat.emission_enabled = true
+	slat_mat.emission = Color(1.0, 0.78, 0.44)
+	slat_mat.emission_energy_multiplier = 1.45
+	for i in range(46):
+		var sz := -4.4 + float(i) * 0.16
+		var slat := _add_box(root, Vector3(0.015, 1.60, 0.085), Vector3(-3.82, floor_y + 1.85, sz), Color(1.0, 0.88, 0.64), 0.4)
+		slat.rotation.y = 0.42
+		slat.material_override = slat_mat
+
+	# Volumetric 4:00 PM Golden Sunbeam Shafts slanting from left windows across the tables
+	var beam_mat := StandardMaterial3D.new()
+	beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	beam_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	beam_mat.albedo_color = Color(1.0, 0.82, 0.48, 0.065)
+	for bz in [-2.6, -1.0, 0.5]:
+		var beam := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(4.6, 1.45, 0.85)
+		beam.mesh = bm
+		beam.position = Vector3(-1.4, floor_y + 1.35, bz)
+		beam.rotation.z = -0.34
+		beam.material_override = beam_mat
+		root.add_child(beam)
+
+	# 4. Right Aisle Wall (x = +2.85) with Tall Cream-Beige Sliding Glass Instrument Cabinets
+	_add_box(root, Vector3(0.12, 3.2, 11.5), Vector3(3.05, floor_y + 1.60, -1.2), wall_cream, 0.85)
+	for cz in [-3.4, -1.9, -0.4, 1.1]:
+		_add_box(root, Vector3(0.56, 2.15, 1.38), Vector3(2.68, floor_y + 1.075, cz), Color(0.84, 0.81, 0.73), 0.55)
+		for sy in [0.45, 1.05, 1.60]:
+			_add_box(root, Vector3(0.50, 0.025, 1.32), Vector3(2.64, floor_y + sy, cz), Color(0.72, 0.70, 0.64), 0.5)
+			_add_box(root, Vector3(0.32, 0.22, 0.45), Vector3(2.62, floor_y + sy + 0.12, cz - 0.30), Color(0.22, 0.35, 0.52), 0.4)
+			_add_box(root, Vector3(0.32, 0.22, 0.45), Vector3(2.62, floor_y + sy + 0.12, cz + 0.30), Color(0.76, 0.75, 0.70), 0.4)
+
+	# 5. Neighboring Student Mahogany Lab Tables (2 Rows in Front of You + Left Neighboring Table)
+	var neighbor_coords := [
+		Vector3(-2.10, 0.0, 0.14),   # Left-side neighboring table next to you
+		Vector3(0.02, 0.0, -1.55),   # Row directly in front of you
+		Vector3(-2.10, 0.0, -1.55),  # Front-left table
+		Vector3(0.02, 0.0, -3.05),   # Second row in front of you
+		Vector3(-2.10, 0.0, -3.05)   # Second row left
+	]
+	for nc in neighbor_coords:
+		_add_box(root, Vector3(1.55, 0.04, 0.95), Vector3(nc.x, -0.02, nc.z), mahogany, 0.36)
+		for lx in [-0.70, 0.70]:
+			for lz in [-0.40, 0.40]:
+				_add_box(root, Vector3(0.045, 0.72, 0.045), Vector3(nc.x + lx, -0.38, nc.z + lz), Color(0.14, 0.11, 0.09), 0.45)
+		# Student benchtop instruments (oscilloscopes & power supplies)
+		_add_box(root, Vector3(0.30, 0.17, 0.24), Vector3(nc.x - 0.28, 0.085, nc.z - 0.10), Color(0.80, 0.79, 0.75), 0.45)
+		_add_box(root, Vector3(0.22, 0.14, 0.20), Vector3(nc.x + 0.25, 0.070, nc.z - 0.10), Color(0.25, 0.27, 0.30), 0.45)
+
+	# 6. Practicum Students in Navy-Blue Lab Jackets (Seated Next to You & in Front Rows) + Walking Student
+	var seated_students: Array[Dictionary] = []
+	var student_spots := [
+		{"pos": Vector3(-1.85, floor_y, 0.55), "yaw": 0.15, "hijab": true},    # Partner seated at table next to you
+		{"pos": Vector3(-2.35, floor_y, 0.55), "yaw": -0.10, "hijab": false},  # Second student next to you
+		{"pos": Vector3(-0.25, floor_y, -1.10), "yaw": 0.08, "hijab": false},  # Student in front of you
+		{"pos": Vector3(0.35, floor_y, -1.10), "yaw": -0.12, "hijab": true},   # Student in front-right
+		{"pos": Vector3(-1.95, floor_y, -1.10), "yaw": 0.18, "hijab": false},  # Student front-left
+		{"pos": Vector3(0.10, floor_y, -2.60), "yaw": 0.05, "hijab": false}    # Student second row ahead
+	]
+	for sp in student_spots:
+		var st := _build_student_avatar(root, true, bool(sp["hijab"]))
+		st["root"].position = sp["pos"]
+		st["root"].rotation.y = float(sp["yaw"])
+		seated_students.append(st)
+
+	# Walking Student / Lab Assistant moving along the right aisle (z = -3.2 to +1.0)
+	var walker := _build_student_avatar(root, false, false)
+	walker["root"].position = Vector3(1.65, floor_y, -2.2)
+
+	# 7. Rear Slotted-Angle Steel Racks behind your seat (z = +2.35)
+	_add_box(root, Vector3(2.8, 2.05, 0.55), Vector3(-0.4, floor_y + 1.025, 2.35), Color(0.68, 0.67, 0.64), 0.6)
+	_add_box(root, Vector3(0.45, 0.32, 0.36), Vector3(0.45, floor_y + 0.92, 2.15), Color(0.92, 0.93, 0.94), 0.4)
+
+	# 8. Acoustic Tile Ceiling + Twin-Tube Fluorescent Lights
+	_add_box(root, Vector3(9.0, 0.08, 11.5), Vector3(-0.3, floor_y + 3.22, -1.2), Color(0.86, 0.86, 0.84), 0.85)
+	var tube_mat := StandardMaterial3D.new()
+	tube_mat.albedo_color = Color(1.0, 1.0, 1.0)
+	tube_mat.emission_enabled = true
+	tube_mat.emission = Color(0.96, 0.97, 1.0)
+	tube_mat.emission_energy_multiplier = 1.15
+	for fx in [-1.8, 0.8]:
+		for fz in [-3.4, -1.5, 0.4]:
+			_add_box(root, Vector3(0.28, 0.04, 1.15), Vector3(fx, floor_y + 3.15, fz), Color(0.75, 0.76, 0.78), 0.4)
+			var tube := _add_box(root, Vector3(0.18, 0.02, 1.08), Vector3(fx, floor_y + 3.12, fz), Color(1, 1, 1), 0.2)
+			tube.material_override = tube_mat
+
+	# 9. Cinematic Floating Dust Motes in 4:00 PM Sunbeams
+	var dust := GPUParticles3D.new()
+	dust.name = "AfternoonDustMotes"
+	dust.amount = 140
+	dust.lifetime = 8.0
+	dust.preprocess = 4.0
+	dust.position = Vector3(-0.8, 0.45, -1.0)
+	var pmat := ParticleProcessMaterial.new()
+	pmat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pmat.emission_box_extents = Vector3(2.8, 1.1, 2.6)
+	pmat.gravity = Vector3(0.004, -0.003, 0.002)
+	pmat.initial_velocity_min = 0.005
+	pmat.initial_velocity_max = 0.018
+	pmat.scale_min = 0.6
+	pmat.scale_max = 1.4
+	dust.process_material = pmat
+
+	var mote_mesh := SphereMesh.new()
+	mote_mesh.radius = 0.0035
+	mote_mesh.height = 0.007
+	var mote_mat := StandardMaterial3D.new()
+	mote_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mote_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mote_mat.albedo_color = Color(1.0, 0.88, 0.62, 0.55)
+	mote_mesh.material = mote_mat
+	dust.draw_pass_1 = mote_mesh
+	root.add_child(dust)
+
+	return {
+		"seated": seated_students,
+		"walker": walker,
+		"time": 0.0
+	}
+
+static func _build_student_avatar(parent: Node3D, is_seated: bool, has_hijab: bool) -> Dictionary:
+	var av := Node3D.new()
+	parent.add_child(av)
+	var jacket_navy := Color(0.10, 0.14, 0.24)
+	var stripe_gold := Color(0.95, 0.78, 0.14)
+	var skin_col := Color(0.76, 0.58, 0.44)
+	var pants_col := Color(0.16, 0.18, 0.22)
+
+	var hip_y := 0.46 if is_seated else 0.88
+	# Torso (Navy Engineering Practicum Jacket + Yellow Sleeve/Shoulder Stripes)
+	var torso := Node3D.new()
+	torso.position = Vector3(0, hip_y, 0)
+	av.add_child(torso)
+	_add_box(torso, Vector3(0.36, 0.48, 0.20), Vector3(0, 0.24, 0), jacket_navy, 0.65)
+	# Yellow stripe on sleeves/shoulders
+	_add_box(torso, Vector3(0.09, 0.05, 0.11), Vector3(-0.21, 0.36, 0), stripe_gold, 0.5)
+	_add_box(torso, Vector3(0.09, 0.05, 0.11), Vector3(0.21, 0.36, 0), stripe_gold, 0.5)
+
+	# Head + Hair or Hijab
+	var head := Node3D.new()
+	head.position = Vector3(0, 0.56, 0)
+	torso.add_child(head)
+	_add_cyl(head, 0.095, 0.20, Vector3(0, 0.08, 0), skin_col, 0.55)
+	if has_hijab:
+		_add_box(head, Vector3(0.23, 0.26, 0.23), Vector3(0, 0.08, 0.01), Color(0.84, 0.76, 0.74), 0.7)
+	else:
+		_add_box(head, Vector3(0.20, 0.12, 0.21), Vector3(0, 0.15, 0.01), Color(0.10, 0.10, 0.12), 0.6)
+
+	# Arms reaching forward toward bench instruments
+	var arm_l := _add_box(torso, Vector3(0.08, 0.34, 0.08), Vector3(-0.22, 0.26, -0.10 if is_seated else 0.0), jacket_navy, 0.65)
+	var arm_r := _add_box(torso, Vector3(0.08, 0.34, 0.08), Vector3(0.22, 0.26, -0.10 if is_seated else 0.0), jacket_navy, 0.65)
+	if is_seated:
+		arm_l.rotation.x = 0.72
+		arm_r.rotation.x = 0.72
+		torso.rotation.x = -0.16
+
+	# Legs
+	var leg_l := _add_box(av, Vector3(0.12, 0.46 if is_seated else 0.86, 0.13), Vector3(-0.10, 0.23 if is_seated else 0.43, -0.12 if is_seated else 0.0), pants_col, 0.7)
+	var leg_r := _add_box(av, Vector3(0.12, 0.46 if is_seated else 0.86, 0.13), Vector3(0.10, 0.23 if is_seated else 0.43, -0.12 if is_seated else 0.0), pants_col, 0.7)
+	if is_seated:
+		# Lab stool/chair
+		_add_cyl(av, 0.19, 0.04, Vector3(0, 0.44, 0.05), Color(0.22, 0.24, 0.28), 0.5)
+		_add_cyl(av, 0.025, 0.44, Vector3(0, 0.22, 0.05), Color(0.14, 0.15, 0.17), 0.4)
+
+	return {
+		"root": av,
+		"torso": torso,
+		"arm_l": arm_l,
+		"arm_r": arm_r,
+		"leg_l": leg_l,
+		"leg_r": leg_r
+	}
+
+static func animate_lab_life(env_data: Dictionary, delta: float) -> void:
+	if env_data.is_empty():
+		return
+	var campus_group: Node3D = env_data.get("campus_group")
+	if campus_group == null or not campus_group.visible:
+		return
+	var anim: Dictionary = env_data.get("campus_anim", {})
+	if anim.is_empty():
+		return
+	anim["time"] = float(anim.get("time", 0.0)) + delta
+	var t := float(anim["time"])
+
+	# Subtle practicum activity for seated students (adjusting scope knobs & taking notes)
+	var seated: Array = anim.get("seated", [])
+	for i in range(seated.size()):
+		var st: Dictionary = seated[i]
+		var torso: Node3D = st["torso"]
+		var arm_r: MeshInstance3D = st["arm_r"]
+		var phase := t * 1.4 + float(i) * 1.7
+		torso.rotation.x = -0.16 + sin(phase) * 0.04
+		arm_r.rotation.x = 0.72 + cos(phase * 1.5) * 0.10
+
+	# Walking student/assistant pacing smoothly along the right aisle (z from -3.1 to +0.8)
+	var walker: Dictionary = anim.get("walker", {})
+	if not walker.is_empty():
+		var w_root: Node3D = walker["root"]
+		var cycle := fmod(t * 0.22, 2.0)
+		var forward := cycle < 1.0
+		var u := cycle if forward else (2.0 - cycle)
+		w_root.position.z = lerpf(-3.1, 0.8, u)
+		w_root.rotation.y = PI if forward else 0.0
+		var stride := sin(t * 5.2) * 0.38
+		walker["leg_l"].rotation.x = stride
+		walker["leg_r"].rotation.x = -stride
+		walker["arm_l"].rotation.x = -stride * 0.7
+		walker["arm_r"].rotation.x = stride * 0.7
 
 static func apply_theme(env_data: Dictionary, world_env: WorldEnvironment, key_light: DirectionalLight3D, theme_idx: int) -> void:
 	if env_data.is_empty():
@@ -268,13 +556,21 @@ static func apply_theme(env_data: Dictionary, world_env: WorldEnvironment, key_l
 	var wall_mat: StandardMaterial3D = env_data["wall_mat"]
 	var bulb_mat: StandardMaterial3D = env_data["bulb_mat"]
 	var task_light: OmniLight3D = env_data["task_light"]
+	var studio_group: Node3D = env_data.get("studio_group")
+	var campus_group: Node3D = env_data.get("campus_group")
+
+	var is_campus := bool(cfg.get("is_campus", false))
+	if studio_group != null:
+		studio_group.visible = not is_campus
+	if campus_group != null:
+		campus_group.visible = is_campus
 
 	desk_mat.albedo_color = cfg["desk_col"]
 	desk_mat.roughness = float(cfg["desk_rough"])
 	esd_mat.albedo_color = cfg["esd_col"]
 	wall_mat.albedo_color = cfg["wall_col"]
 
-	var lamp_on := bool(cfg["lamp_on"])
+	var lamp_on := bool(cfg["lamp_on"]) and (not is_campus)
 	bulb_mat.emission = cfg["lamp_col"]
 	bulb_mat.emission_energy_multiplier = 2.8 if lamp_on else 0.0
 	task_light.light_color = cfg["lamp_col"]
@@ -287,6 +583,8 @@ static func apply_theme(env_data: Dictionary, world_env: WorldEnvironment, key_l
 	if key_light != null:
 		key_light.light_color = cfg["key_col"]
 		key_light.light_energy = float(cfg["key_energy"])
+		if cfg.has("key_rot"):
+			key_light.rotation = cfg["key_rot"]
 
 static func _add_box(parent: Node3D, sz: Vector3, pos: Vector3, col: Color, rough := 0.5) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -316,3 +614,29 @@ static func _add_cyl(parent: Node3D, rad: float, h: float, pos: Vector3, col: Co
 	mi.material_override = mat
 	parent.add_child(mi)
 	return mi
+
+static func _add_strut(parent: Node3D, a: Vector3, b: Vector3, rad: float, col: Color) -> void:
+	var dist := a.distance_to(b)
+	if dist < 0.001:
+		return
+	var pivot := Node3D.new()
+	pivot.position = (a + b) * 0.5
+	parent.add_child(pivot)
+	var up := Vector3.UP if absf((b - a).normalized().dot(Vector3.UP)) < 0.99 else Vector3.FORWARD
+	pivot.look_at(parent.to_global(b), up)
+	var cyl := _add_cyl(pivot, rad, dist, Vector3.ZERO, col, 0.35, 0.72)
+	cyl.rotation.x = PI * 0.5
+
+static func _add_joint_sphere(parent: Node3D, pos: Vector3, rad: float, col: Color) -> void:
+	var mi := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = rad
+	sm.height = rad * 2.0
+	mi.mesh = sm
+	mi.position = pos
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = col
+	mat.roughness = 0.32
+	mat.metallic = 0.78
+	mi.material_override = mat
+	parent.add_child(mi)

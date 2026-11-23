@@ -107,6 +107,8 @@ func _process(delta: float) -> void:
 			if SimState.last_mission_report != "":
 				_m_res_lbl.text = SimState.last_mission_report
 
+	LabEnvironmentBuilder.animate_lab_life(_env_data, delta)
+
 	# 3. Subtle pulsing glow on the active cyan-blue selection ring
 	if _hover_ring != null and _hover_ring.visible and _ring_mat != null:
 		_ring_mat.emission_energy_multiplier = 2.4 + sin(_pulse_time * 6.5) * 0.8
