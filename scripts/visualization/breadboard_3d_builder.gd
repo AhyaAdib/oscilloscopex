@@ -40,7 +40,7 @@ const CIRCUIT_MODELS := [
 static func build_breadboard_on_bench(parent: Node, snap_targets: Dictionary, interactables: Array) -> Dictionary:
 	var root := Node3D.new()
 	root.name = "BreadboardUnit"
-	root.position = Vector3(0.02, 0.003, 0.285)
+	root.position = Vector3(0.0, 0.003, 0.255)
 	parent.add_child(root)
 
 	# 1. Main Board Substrate (switches between High-Contrast Cream Breadboard & Green FR-4 PCB)
@@ -128,13 +128,19 @@ static func build_breadboard_on_bench(parent: Node, snap_targets: Dictionary, in
 	trace_mat.emission_energy_multiplier = 0.45
 
 	var trace_segments := [
+		# Signal path: TP1 -> R1 -> TP2 -> C1/D1 -> TP3
 		[Vector3(-0.056, 0.0083, 0.018), Vector3(-0.056, 0.0083, -0.012), 0.0026],
 		[Vector3(-0.056, 0.0083, -0.012), Vector3(-0.020, 0.0083, -0.012), 0.0026],
 		[Vector3(-0.020, 0.0083, -0.012), Vector3(-0.020, 0.0083, 0.018), 0.0026],
 		[Vector3(-0.020, 0.0083, -0.012), Vector3(0.018, 0.0083, -0.012), 0.0026],
 		[Vector3(0.018, 0.0083, -0.012), Vector3(0.018, 0.0083, 0.018), 0.0026],
-		[Vector3(0.018, 0.0083, -0.012), Vector3(0.056, 0.0083, -0.012), 0.0026],
-		[Vector3(-0.068, 0.0083, 0.028), Vector3(0.068, 0.0083, 0.028), 0.0032]
+		# Connected Ground Return Bus: Diode/Shunt leg -> TP4 GND -> Bottom GND Rail
+		[Vector3(0.018, 0.0083, -0.012), Vector3(0.056, 0.0083, -0.012), 0.0028],
+		[Vector3(0.056, 0.0083, -0.012), Vector3(0.056, 0.0083, 0.028), 0.0030],
+		[Vector3(-0.068, 0.0083, 0.028), Vector3(0.068, 0.0083, 0.028), 0.0032],
+		# Top VCC Power Rail from PSU +12V Pad (x=0.072, z=-0.028) to IC VCC Pin
+		[Vector3(-0.020, 0.0083, -0.028), Vector3(0.072, 0.0083, -0.028), 0.0030],
+		[Vector3(-0.020, 0.0083, -0.028), Vector3(-0.020, 0.0083, -0.006), 0.0024]
 	]
 	for seg in trace_segments:
 		var p_a: Vector3 = seg[0]
@@ -149,77 +155,147 @@ static func build_breadboard_on_bench(parent: Node, snap_targets: Dictionary, in
 		t_mesh.material_override = trace_mat
 		pcb_details.add_child(t_mesh)
 
-	# Shared Electronic Components (8-Pin DIP IC, Resistor + Leads, Capacitor, Diode)
+	# Per-Model 3D Electronic Component Assemblies (Model 1..4)
 	var lead_mat := StandardMaterial3D.new()
 	lead_mat.albedo_color = Color(0.84, 0.86, 0.90, 1.0)
 	lead_mat.metallic = 0.90
 	lead_mat.roughness = 0.20
 
-	var ic := MeshInstance3D.new()
-	var ic_box := BoxMesh.new()
-	ic_box.size = Vector3(0.020, 0.0048, 0.013)
-	ic.mesh = ic_box
-	ic.position = Vector3(-0.020, 0.0106, 0.0)
 	var ic_mat := StandardMaterial3D.new()
 	ic_mat.albedo_color = Color(0.10, 0.11, 0.13, 1.0)
 	ic_mat.roughness = 0.40
-	ic.material_override = ic_mat
-	root.add_child(ic)
 
-	# Resistor R1 + visible metallic leads
-	var r_lead := MeshInstance3D.new()
-	var rl_box := BoxMesh.new()
-	rl_box.size = Vector3(0.026, 0.0012, 0.0012)
-	r_lead.mesh = rl_box
-	r_lead.position = Vector3(-0.048, 0.0105, -0.012)
-	r_lead.material_override = lead_mat
-	root.add_child(r_lead)
+	var res_tan_mat := StandardMaterial3D.new()
+	res_tan_mat.albedo_color = Color(0.86, 0.68, 0.42, 1.0)
+	var res_blue_mat := StandardMaterial3D.new()
+	res_blue_mat.albedo_color = Color(0.22, 0.52, 0.82, 1.0)
+	var cap_blue_mat := StandardMaterial3D.new()
+	cap_blue_mat.albedo_color = Color(0.10, 0.25, 0.58, 1.0)
+	var cap_orange_mat := StandardMaterial3D.new()
+	cap_orange_mat.albedo_color = Color(0.92, 0.48, 0.12, 1.0)
+	var diode_blk_mat := StandardMaterial3D.new()
+	diode_blk_mat.albedo_color = Color(0.14, 0.14, 0.16, 1.0)
+	var diode_glass_mat := StandardMaterial3D.new()
+	diode_glass_mat.albedo_color = Color(0.92, 0.30, 0.14, 1.0)
+	var wire_yel_mat := StandardMaterial3D.new()
+	wire_yel_mat.albedo_color = Color(0.95, 0.78, 0.14, 1.0)
+	var wire_grn_mat := StandardMaterial3D.new()
+	wire_grn_mat.albedo_color = Color(0.16, 0.78, 0.36, 1.0)
 
-	var res := MeshInstance3D.new()
-	var res_cyl := CylinderMesh.new()
-	res_cyl.top_radius = 0.0022
-	res_cyl.bottom_radius = 0.0022
-	res_cyl.height = 0.012
-	res.mesh = res_cyl
-	res.rotation.z = PI * 0.5
-	res.position = Vector3(-0.048, 0.0112, -0.012)
-	var res_mat := StandardMaterial3D.new()
-	res_mat.albedo_color = Color(0.86, 0.68, 0.42, 1.0)
-	res.material_override = res_mat
-	root.add_child(res)
+	var model_groups: Array[Node3D] = []
+	for m_i in range(4):
+		var mg := Node3D.new()
+		mg.name = "CircuitModelGroup_" + str(m_i)
+		mg.visible = (m_i == 0)
+		root.add_child(mg)
+		model_groups.append(mg)
 
-	# Electrolytic Capacitor C1
-	var cap := MeshInstance3D.new()
-	var cap_cyl := CylinderMesh.new()
-	cap_cyl.top_radius = 0.0038
-	cap_cyl.bottom_radius = 0.0038
-	cap_cyl.height = 0.010
-	cap.mesh = cap_cyl
-	cap.position = Vector3(0.018, 0.0132, -0.012)
-	var cap_mat := StandardMaterial3D.new()
-	cap_mat.albedo_color = Color(0.10, 0.25, 0.58, 1.0)
-	cap.material_override = cap_mat
-	root.add_child(cap)
+	var _add_res := func(grp: Node3D, pos: Vector3, mat: StandardMaterial3D) -> void:
+		var ld := MeshInstance3D.new()
+		var lb := BoxMesh.new()
+		lb.size = Vector3(0.026, 0.0012, 0.0012)
+		ld.mesh = lb
+		ld.position = pos + Vector3(0, -0.0005, 0)
+		ld.material_override = lead_mat
+		grp.add_child(ld)
+		var rb := MeshInstance3D.new()
+		var rc := CylinderMesh.new()
+		rc.top_radius = 0.0021
+		rc.bottom_radius = 0.0021
+		rc.height = 0.011
+		rb.mesh = rc
+		rb.rotation.z = PI * 0.5
+		rb.position = pos
+		rb.material_override = mat
+		grp.add_child(rb)
 
-	# Diode D1 + metallic leads
-	var d_lead := MeshInstance3D.new()
-	d_lead.mesh = rl_box
-	d_lead.position = Vector3(0.048, 0.0105, -0.012)
-	d_lead.material_override = lead_mat
-	root.add_child(d_lead)
+	var _add_cap := func(grp: Node3D, pos: Vector3, r: float, h: float, mat: StandardMaterial3D) -> void:
+		var cp := MeshInstance3D.new()
+		var cc := CylinderMesh.new()
+		cc.top_radius = r
+		cc.bottom_radius = r
+		cc.height = h
+		cp.mesh = cc
+		cp.position = pos
+		cp.material_override = mat
+		grp.add_child(cp)
 
-	var diode := MeshInstance3D.new()
-	var d_cyl := CylinderMesh.new()
-	d_cyl.top_radius = 0.0017
-	d_cyl.bottom_radius = 0.0017
-	d_cyl.height = 0.008
-	diode.mesh = d_cyl
-	diode.rotation.z = PI * 0.5
-	diode.position = Vector3(0.048, 0.0110, -0.012)
-	var d_mat := StandardMaterial3D.new()
-	d_mat.albedo_color = Color(0.92, 0.30, 0.14, 1.0)
-	diode.material_override = d_mat
-	root.add_child(diode)
+	var _add_ic := func(grp: Node3D, pos: Vector3, w: float) -> void:
+		var icm := MeshInstance3D.new()
+		var icb := BoxMesh.new()
+		icb.size = Vector3(w, 0.0048, 0.013)
+		icm.mesh = icb
+		icm.position = pos
+		icm.material_override = ic_mat
+		grp.add_child(icm)
+
+	# Model 0 (RC_LPF): 1kΩ Resistor + 100nF Film Cap + Jumper Links
+	_add_res.call(model_groups[0], Vector3(-0.038, 0.0112, -0.012), res_tan_mat)
+	_add_cap.call(model_groups[0], Vector3(0.002, 0.0130, -0.012), 0.0034, 0.009, cap_orange_mat)
+	var jmp0 := MeshInstance3D.new()
+	var jb0 := BoxMesh.new()
+	jb0.size = Vector3(0.036, 0.0014, 0.0014)
+	jmp0.mesh = jb0
+	jmp0.position = Vector3(0.036, 0.0105, -0.012)
+	jmp0.material_override = wire_yel_mat
+	model_groups[0].add_child(jmp0)
+
+	# Model 1 (DIODE_RECT): 1N4007 Power Diode + Large Filter Electrolytic Cap + Load Resistor
+	var d1_lead := MeshInstance3D.new()
+	var d1_lb := BoxMesh.new()
+	d1_lb.size = Vector3(0.028, 0.0013, 0.0013)
+	d1_lead.mesh = d1_lb
+	d1_lead.position = Vector3(-0.038, 0.0105, -0.012)
+	d1_lead.material_override = lead_mat
+	model_groups[1].add_child(d1_lead)
+	var d1_body := MeshInstance3D.new()
+	var d1_c := CylinderMesh.new()
+	d1_c.top_radius = 0.0024
+	d1_c.bottom_radius = 0.0024
+	d1_c.height = 0.011
+	d1_body.mesh = d1_c
+	d1_body.rotation.z = PI * 0.5
+	d1_body.position = Vector3(-0.038, 0.0114, -0.012)
+	d1_body.material_override = diode_blk_mat
+	model_groups[1].add_child(d1_body)
+	_add_cap.call(model_groups[1], Vector3(0.004, 0.0155, -0.010), 0.0052, 0.014, cap_blue_mat)
+	_add_res.call(model_groups[1], Vector3(0.042, 0.0112, -0.012), res_blue_mat)
+
+	# Model 2 (ASTABLE_555): Dual DIP ICs (NE555 + ÷2 Flip-Flop) + Timing Resistors RA/RB + Timing Cap
+	_add_ic.call(model_groups[2], Vector3(-0.022, 0.0106, -0.002), 0.020)
+	_add_ic.call(model_groups[2], Vector3(0.020, 0.0106, -0.002), 0.026)
+	_add_res.call(model_groups[2], Vector3(-0.050, 0.0112, -0.016), res_tan_mat)
+	_add_res.call(model_groups[2], Vector3(-0.016, 0.0112, -0.018), res_blue_mat)
+	_add_cap.call(model_groups[2], Vector3(-0.046, 0.0130, 0.004), 0.0032, 0.009, cap_orange_mat)
+	var clk_jmp := MeshInstance3D.new()
+	var cjb := BoxMesh.new()
+	cjb.size = Vector3(0.024, 0.0014, 0.0014)
+	clk_jmp.mesh = cjb
+	clk_jmp.position = Vector3(0.000, 0.0115, -0.016)
+	clk_jmp.material_override = wire_grn_mat
+	model_groups[2].add_child(clk_jmp)
+
+	# Model 3 (PROCEDURAL_MIX): Multi-stage RLC + Op-Amp Buffer + Trimmer Potentiometer
+	_add_ic.call(model_groups[3], Vector3(-0.004, 0.0106, -0.002), 0.020)
+	_add_res.call(model_groups[3], Vector3(-0.044, 0.0112, -0.014), res_blue_mat)
+	_add_cap.call(model_groups[3], Vector3(0.024, 0.0138, -0.013), 0.0042, 0.011, cap_blue_mat)
+	var pot := MeshInstance3D.new()
+	var pot_b := BoxMesh.new()
+	pot_b.size = Vector3(0.009, 0.009, 0.009)
+	pot.mesh = pot_b
+	pot.position = Vector3(0.046, 0.0130, -0.012)
+	pot.material_override = res_blue_mat
+	model_groups[3].add_child(pot)
+	var d_mix := MeshInstance3D.new()
+	var dm_c := CylinderMesh.new()
+	dm_c.top_radius = 0.0018
+	dm_c.bottom_radius = 0.0018
+	dm_c.height = 0.008
+	d_mix.mesh = dm_c
+	d_mix.rotation.z = PI * 0.5
+	d_mix.position = Vector3(-0.044, 0.0110, 0.004)
+	d_mix.material_override = diode_glass_mat
+	model_groups[3].add_child(d_mix)
 
 	# 4 Upright Gold Test-Point Pins (TP1, TP2, TP3, TP4 GND) with high-contrast label plaques
 	var tp_specs := [
@@ -290,12 +366,41 @@ static func build_breadboard_on_bench(parent: Node, snap_targets: Dictionary, in
 			"label": "Board " + tp["label"]
 		}
 
+	# External Bench PSU Power Input Terminals (VCC + Red & GND - Black) on right edge of board
+	var pwr_vcc_collar := MeshInstance3D.new()
+	var pvc_cyl := CylinderMesh.new()
+	pvc_cyl.top_radius = 0.0038
+	pvc_cyl.bottom_radius = 0.0038
+	pvc_cyl.height = 0.006
+	pwr_vcc_collar.mesh = pvc_cyl
+	pwr_vcc_collar.position = Vector3(0.072, 0.011, -0.025)
+	var pvc_mat := StandardMaterial3D.new()
+	pvc_mat.albedo_color = Color(0.90, 0.16, 0.16, 1.0)
+	pwr_vcc_collar.material_override = pvc_mat
+	root.add_child(pwr_vcc_collar)
+
+	var pwr_gnd_collar := MeshInstance3D.new()
+	pwr_gnd_collar.mesh = pvc_cyl
+	pwr_gnd_collar.position = Vector3(0.072, 0.011, 0.025)
+	var pvg_mat := StandardMaterial3D.new()
+	pvg_mat.albedo_color = Color(0.12, 0.13, 0.15, 1.0)
+	pwr_gnd_collar.material_override = pvg_mat
+	root.add_child(pwr_gnd_collar)
+
 	return {
 		"root": root,
 		"body_mat": body_mat,
 		"bb_details": bb_details,
-		"pcb_details": pcb_details
+		"pcb_details": pcb_details,
+		"model_groups": model_groups
 	}
+
+static func set_active_model(bb_data: Dictionary, model_idx: int) -> void:
+	if bb_data.is_empty() or not bb_data.has("model_groups"):
+		return
+	var groups: Array = bb_data["model_groups"]
+	for idx in range(groups.size()):
+		(groups[idx] as Node3D).visible = (idx == model_idx)
 
 static func set_board_style(bb_data: Dictionary, is_pcb: bool) -> void:
 	if bb_data.is_empty():
@@ -321,18 +426,22 @@ static func generate_breadboard_signal(model_cfg: Dictionary, tp_key: String, sa
 	volts.resize(sample_count)
 	var dt := time_span / float(maxi(sample_count - 1, 1))
 	var model_id := str(model_cfg.get("id", "RC_LPF"))
+	var psu_vcc := float(model_cfg.get("psu_vcc", 12.0))
+	var rail_lim := maxf(psu_vcc * 0.45, 0.0)
+	var pwr_factor := clampf(psu_vcc / 5.0, 0.0, 1.0)
 
 	for i in range(sample_count):
 		var t := sim_time_offset + float(i) * dt
 		times[i] = t
 		var v := 0.0
 
-		if tp_key == "BB_TP4":
+		# Bench PSU (GW Instek GPS-3030D) supplies board power: 0.00 V or POWER OFF = 0V across all test points
+		if tp_key == "BB_TP4" or psu_vcc <= 0.01:
 			v = 0.0
 		elif model_id == "RC_LPF" or model_id == "PROCEDURAL_MIX":
 			var r_ohm := float(model_cfg.get("r_ohm", 1000.0))
 			var c_f := float(model_cfg.get("c_farad", 100e-9))
-			var v_amp := float(model_cfg.get("v_in_amp", 2.5))
+			var v_amp := psu_vcc * 0.25
 			var freq := float(model_cfg.get("freq_hz", 1600.0))
 			var omega := TAU * freq
 			var rc := maxf(r_ohm * c_f, 1e-9)
@@ -345,9 +454,9 @@ static func generate_breadboard_signal(model_cfg: Dictionary, tp_key: String, sa
 			elif tp_key == "BB_TP3":
 				v = v_amp * sin(omega * t) - v_amp * gain * sin(omega * t + phase)
 		elif model_id == "DIODE_RECT":
-			var v_amp := float(model_cfg.get("v_in_amp", 3.0))
+			var v_amp := psu_vcc * 0.25
 			var freq := float(model_cfg.get("freq_hz", 500.0))
-			var ripple := float(model_cfg.get("ripple_v", 0.45))
+			var ripple := minf(float(model_cfg.get("ripple_v", 0.45)), v_amp * 0.20)
 			var v_ac := v_amp * sin(TAU * freq * t)
 			var v_rect := maxf(v_ac - 0.65, 0.0)
 			if tp_key == "BB_TP1":
@@ -360,7 +469,7 @@ static func generate_breadboard_signal(model_cfg: Dictionary, tp_key: String, sa
 				var v_peak := maxf(v_amp - 0.65, 0.0)
 				v = maxf(v_peak - ripple * cycle_pos, v_rect)
 		elif model_id == "ASTABLE_555":
-			var vcc := float(model_cfg.get("vcc", 5.0))
+			var vcc := clampf(psu_vcc, 0.0, 18.0) if psu_vcc >= 4.5 else 0.0
 			var freq := float(model_cfg.get("freq_hz", 1000.0))
 			var phase := fmod(t * freq, 1.0)
 			if phase < 0.0:

@@ -61,6 +61,10 @@ var analog_config := {
 	"ch2_coupling": AnalogScopeEngine.CouplingMode.DC,
 	"probe_attenuation": 1.0,
 	"probe2_attenuation": 1.0,
+	"psu_power_on": true,
+	"psu_voltage_coarse": 12.0,
+	"psu_voltage_fine": 0.0,
+	"psu_current_limit": 1.5,
 	"probe_compensation": 1.0,
 	"probe1_bnc": "CH1",
 	"probe1_tip": "FG_CH1",
@@ -118,6 +122,12 @@ func select_breadboard_model(idx: int, randomize_proc := false) -> void:
 		breadboard_config["c_farad"] = c_list[rng.randi_range(0, c_list.size() - 1)]
 		breadboard_config["freq_hz"] = f_list[rng.randi_range(0, f_list.size() - 1)]
 		breadboard_config["v_in_amp"] = a_list[rng.randi_range(0, a_list.size() - 1)]
+	if str(analog_config.get("probe1_tip", "")) in ["FG_CH1", "FLOATING"]:
+		analog_config["probe1_bnc"] = "CH1"
+		analog_config["probe1_tip"] = "BB_TP1"
+	if str(analog_config.get("probe2_tip", "")) in ["FG_CH2", "FLOATING"]:
+		analog_config["probe2_bnc"] = "CH2"
+		analog_config["probe2_tip"] = "BB_TP2"
 	recompute()
 
 func set_lab_mode(mode_name: String) -> void:
@@ -131,7 +141,6 @@ func set_lab_mode(mode_name: String) -> void:
 		analog_config["coupling"] = AnalogScopeEngine.CouplingMode.GND
 		analog_config["ch2_coupling"] = AnalogScopeEngine.CouplingMode.GND
 		analog_config["probe_attenuation"] = 1.0
-		analog_config["probe2_attenuation"] = 1.0
 		analog_config["probe_compensation"] = 0.65
 		analog_config["probe1_bnc"] = "UNPLUGGED"
 		analog_config["probe1_tip"] = "FLOATING"
@@ -152,7 +161,6 @@ func set_lab_mode(mode_name: String) -> void:
 		analog_config["coupling"] = AnalogScopeEngine.CouplingMode.DC
 		analog_config["ch2_coupling"] = AnalogScopeEngine.CouplingMode.DC
 		analog_config["probe_attenuation"] = 1.0
-		analog_config["probe2_attenuation"] = 1.0
 		analog_config["probe_compensation"] = 1.0
 		analog_config["probe1_bnc"] = "CH1"
 		analog_config["probe1_tip"] = "FG_CH1"
@@ -248,6 +256,10 @@ func recompute() -> void:
 	elif p1_bnc == "CH2":
 		ch2_tip = p1_tip
 
+	var psu_on := bool(analog_config.get("psu_power_on", true))
+	var psu_vcc := clampf(float(analog_config.get("psu_voltage_coarse", 12.0)) + float(analog_config.get("psu_voltage_fine", 0.0)), 0.0, 30.0) if psu_on else 0.0
+	breadboard_config["psu_vcc"] = psu_vcc
+
 	# CH 1 Analog Chain
 	var raw1 := Breadboard3DBuilder.generate_breadboard_signal(breadboard_config, ch1_tip, total_samples, total_span, sim_time_offset) if ch1_tip.begins_with("BB_TP") else SignalGenerator.generate_buffer(_resolve_tip_signal(ch1_tip), total_samples, total_span, sim_time_offset)
 	raw_time_buffer = raw1["times"]
@@ -264,7 +276,6 @@ func recompute() -> void:
 	var raw2 := Breadboard3DBuilder.generate_breadboard_signal(breadboard_config, ch2_tip, total_samples, total_span, sim_time_offset) if ch2_tip.begins_with("BB_TP") else SignalGenerator.generate_buffer(_resolve_tip_signal(ch2_tip), total_samples, total_span, sim_time_offset)
 	var cfg2 := analog_config.duplicate()
 	cfg2["coupling"] = analog_config.get("ch2_coupling", AnalogScopeEngine.CouplingMode.DC)
-	cfg2["probe_attenuation"] = analog_config.get("probe2_attenuation", 1.0)
 	cfg2["vert_pos_div"] = analog_config.get("ch2_vert_pos_div", 0.0)
 	var view2 := view_config.duplicate()
 	view2["volts_per_div"] = view_config.get("ch2_volts_per_div", 1.0)

@@ -108,8 +108,6 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	var esd := _add_box(env_root, Vector3(1.12, 0.003, 0.68), Vector3(0.02, 0.0015, 0.18), Color(0.07, 0.38, 0.68), 0.60)
 	_add_box(env_root, Vector3(0.032, 0.010, 0.038), Vector3(0.45, 0.007, 0.44), Color(0.11, 0.12, 0.14), 0.45)
 	_add_cyl(env_root, 0.004, 0.004, Vector3(0.45, 0.013, 0.44), Color(0.85, 0.72, 0.22), 0.25, 0.85)
-	var pen := _add_cyl(env_root, 0.0028, 0.11, Vector3(-0.18, 0.0055, 0.16), Color(0.14, 0.16, 0.20), 0.35, 0.4)
-	pen.rotation.z = PI * 0.5
 
 	# =========================================================================
 	# STUDIO PROPS GROUP
@@ -195,8 +193,8 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	# SHARED BENCH INSTRUMENTS (Present in both Studio & Campus Lab Modes)
 	# =========================================================================
 	var hdmm := Node3D.new()
-	hdmm.position = Vector3(-0.40, 0.019, 0.29)
-	hdmm.rotation = Vector3(0.0, 0.38, 0.0)
+	hdmm.position = Vector3(-0.47, 0.019, 0.31)
+	hdmm.rotation = Vector3(0.0, 0.48, 0.0)
 	env_root.add_child(hdmm)
 	_add_box(hdmm, Vector3(0.086, 0.032, 0.165), Vector3(0, 0, 0), Color(0.95, 0.74, 0.10), 0.55)
 	_add_box(hdmm, Vector3(0.072, 0.034, 0.150), Vector3(0, 0.001, 0), Color(0.16, 0.17, 0.20), 0.45)
@@ -236,8 +234,8 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 	for bx in [-0.08, -0.045, -0.01, 0.025]:
 		_add_cyl(dso_root, 0.0055, 0.014, Vector3(bx, 0.014, 0.065), Color(0.78, 0.80, 0.83), 0.25, 0.85).rotation.x = PI * 0.5
 
-	var rack_x := 0.25
-	var rack_z := 0.04
+	var rack_x := 0.46
+	var rack_z := -0.08
 	var wood_col := Color(0.76, 0.62, 0.44)
 	_add_box(env_root, Vector3(0.016, 0.38, 0.24), Vector3(rack_x - 0.145, 0.19, rack_z), wood_col, 0.72)
 	_add_box(env_root, Vector3(0.016, 0.38, 0.24), Vector3(rack_x + 0.145, 0.19, rack_z), wood_col, 0.72)
@@ -276,8 +274,8 @@ static func build_studio_workbench(parent: Node) -> Dictionary:
 		_add_cyl(env_root, 0.0045, 0.011, Vector3(rack_x + px, 0.198, rack_z + 0.109), pc, 0.35).rotation.x = PI * 0.5
 
 	var meter_root := Node3D.new()
-	meter_root.position = Vector3(0.49, 0.0, 0.15)
-	meter_root.rotation.y = -0.35
+	meter_root.position = Vector3(0.48, 0.0, 0.24)
+	meter_root.rotation.y = -0.52
 	env_root.add_child(meter_root)
 	_add_box(meter_root, Vector3(0.115, 0.155, 0.10), Vector3(0.0, 0.0775, 0.0), Color(0.30, 0.32, 0.35), 0.45)
 	_add_box(meter_root, Vector3(0.092, 0.068, 0.004), Vector3(0.0, 0.108, 0.051), Color(0.95, 0.94, 0.90), 0.25)

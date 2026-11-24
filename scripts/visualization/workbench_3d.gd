@@ -5,11 +5,11 @@ const VOLTS_STEPS := [0.2, 0.5, 1.0, 2.0, 5.0]
 const TIME_STEPS := [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005]
 
 const CAMERA_PRESETS := [
-	{"name": "1: Full Bench", "pos": Vector3(0.03, 0.25, 0.62), "target": Vector3(0.02, 0.09, 0.14)},
-	{"name": "2: Scope Knobs", "pos": Vector3(-0.07, 0.14, 0.39), "target": Vector3(-0.08, 0.10, 0.18)},
-	{"name": "3: CRT + CAL Hook", "pos": Vector3(-0.26, 0.13, 0.37), "target": Vector3(-0.26, 0.10, 0.18)},
-	{"name": "4: Siglent Gen", "pos": Vector3(0.24, 0.14, 0.38), "target": Vector3(0.24, 0.06, 0.14)},
-	{"name": "5: Breadboard", "pos": Vector3(0.045, 0.14, 0.42), "target": Vector3(0.045, 0.015, 0.245)}
+	{"name": "1: Full Bench", "pos": Vector3(0.0, 0.28, 0.66), "target": Vector3(0.0, 0.08, 0.12)},
+	{"name": "2: Scope Knobs", "pos": Vector3(0.09, 0.14, 0.35), "target": Vector3(0.09, 0.10, 0.14)},
+	{"name": "3: CRT + CAL Hook", "pos": Vector3(-0.09, 0.13, 0.33), "target": Vector3(-0.09, 0.10, 0.14)},
+	{"name": "4: Siglent Gen", "pos": Vector3(-0.22, 0.14, 0.34), "target": Vector3(-0.34, 0.06, 0.08)},
+	{"name": "5: Breadboard + PSU", "pos": Vector3(0.08, 0.16, 0.44), "target": Vector3(0.06, 0.03, 0.22)}
 ]
 
 var _main_vp: SubViewport
@@ -438,12 +438,14 @@ func _input(event: InputEvent) -> void:
 			_orbiting = mb.pressed
 			get_viewport().set_input_as_handled()
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
+			_pick_hovered_control(local_pos)
 			if not _hovered_ctrl.is_empty() and _hovered_ctrl["type"] == "knob":
 				_set_knob_3d_value(_hovered_ctrl, float(_hovered_ctrl["value"]) + float(_hovered_ctrl["step"]))
 			else:
 				_goal_dist = clampf(_goal_dist - 0.04, 0.16, 1.05)
 			get_viewport().set_input_as_handled()
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
+			_pick_hovered_control(local_pos)
 			if not _hovered_ctrl.is_empty() and _hovered_ctrl["type"] == "knob":
 				_set_knob_3d_value(_hovered_ctrl, float(_hovered_ctrl["value"]) - float(_hovered_ctrl["step"]))
 			else:
@@ -643,6 +645,16 @@ func _set_knob_3d_value(ctrl: Dictionary, raw_val: float) -> void:
 			SimState.set_signal_param("amplitude", snapped_v)
 		"fg_offset":
 			SimState.set_signal_param("dc_offset", snapped_v)
+		"psu_voltage_coarse", "psu_voltage_fine":
+			SimState.set_analog_param(pid, snapped_v)
+			var psu_d: Dictionary = _scope_data.get("psu", {})
+			if psu_d.has("show_amps"):
+				psu_d["show_amps"] = false
+		"psu_current_limit":
+			SimState.set_analog_param(pid, snapped_v)
+			var psu_d: Dictionary = _scope_data.get("psu", {})
+			if psu_d.has("show_amps"):
+				psu_d["show_amps"] = true
 
 func _cycle_switch_3d(ctrl: Dictionary) -> void:
 	var opts: Array = ctrl["options"]
@@ -666,6 +678,8 @@ func _cycle_switch_3d(ctrl: Dictionary) -> void:
 			SimState.set_analog_param("persistence", p_vals[next_idx])
 		"probe_attenuation_switch":
 			SimState.set_analog_param("probe_attenuation", 10.0 if next_idx == 1 else 1.0)
+		"probe2_attenuation_switch":
+			SimState.set_analog_param("probe2_attenuation", 10.0 if next_idx == 1 else 1.0)
 
 func _toggle_button_3d(ctrl: Dictionary) -> void:
 	var pid: String = ctrl["param_id"]
@@ -683,8 +697,30 @@ func _toggle_button_3d(ctrl: Dictionary) -> void:
 	elif pid == "fg_sel_ch2":
 		SimState.select_fg_channel(2)
 		_update_hover_hud(ctrl)
+	elif pid == "psu_power_on":
+		var next_psu := not bool(SimState.analog_config.get("psu_power_on", true))
+		SimState.set_analog_param("psu_power_on", next_psu)
+		_update_hover_hud(ctrl)
 
 func _sync_visuals() -> void:
+	# Sync GW Instek GPS-3030D LED Readout & VOLTS/AMPS Indicators
+	var psu_dict: Dictionary = _scope_data.get("psu", {})
+	if not psu_dict.is_empty() and psu_dict.has("readout_lbl"):
+		var r_lbl: Label3D = psu_dict["readout_lbl"]
+		var p_on := bool(SimState.analog_config.get("psu_power_on", true))
+		var show_a := bool(psu_dict.get("show_amps", false))
+		var v_tot := clampf(float(SimState.analog_config.get("psu_voltage_coarse", 12.0)) + float(SimState.analog_config.get("psu_voltage_fine", 0.0)), 0.0, 30.0)
+		var i_lim := float(SimState.analog_config.get("psu_current_limit", 1.5))
+		if not p_on:
+			r_lbl.text = " OFF "
+		elif show_a:
+			r_lbl.text = "%.2f A" % i_lim
+		else:
+			r_lbl.text = "%.2f V" % v_tot
+		if psu_dict.has("volts_led") and psu_dict.has("amps_led"):
+			(psu_dict["volts_led"] as MeshInstance3D).visible = p_on and not show_a
+			(psu_dict["amps_led"] as MeshInstance3D).visible = p_on and show_a
+
 	if _scope_data.is_empty() or not has_node("/root/SimState"):
 		return
 	var is_on := bool(SimState.view_config.get("power_on", true))
@@ -698,6 +734,7 @@ func _sync_visuals() -> void:
 	cap.position.z = 0.0015 if is_on else 0.0035
 
 	Breadboard3DBuilder.set_board_style(_scope_data.get("breadboard", {}), SimState.board_is_pcb)
+	Breadboard3DBuilder.set_active_model(_scope_data.get("breadboard", {}), SimState.breadboard_model_idx)
 	LabEnvironmentBuilder.apply_theme(_env_data, _world_env, _key_light, SimState.lab_theme_idx)
 	var snaps: Dictionary = _scope_data["snap_targets"]
 	if _dragging_probe_kind == "":
@@ -755,6 +792,8 @@ func _sync_visuals() -> void:
 				ctrl["index"] = int(SimState.analog_config["trigger_slope"])
 			elif pid == "probe_attenuation_switch":
 				ctrl["index"] = 1 if float(SimState.analog_config["probe_attenuation"]) > 1.5 else 0
+			elif pid == "probe2_attenuation_switch":
+				ctrl["index"] = 1 if float(SimState.analog_config.get("probe2_attenuation", 1.0)) > 1.5 else 0
 			VP5231A3DBuilder.update_switch_visual(ctrl)
 
 	var wf_lbl: Label3D = _scope_data.get("fg_wf_lbl")

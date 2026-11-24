@@ -13,7 +13,7 @@ const COL_SILKSCREEN := Color(0.10, 0.10, 0.09, 1.0)
 static func build_oscilloscope(parent: Node, crt_texture: ViewportTexture) -> Dictionary:
 	var root := Node3D.new()
 	root.name = "National_VP5231A"
-	root.position = Vector3(-0.17, 0.0, 0.0)
+	root.position = Vector3(0.01, 0.0, -0.06)
 	parent.add_child(root)
 
 	var interactables: Array[Dictionary] = []
@@ -132,7 +132,8 @@ static func build_oscilloscope(parent: Node, crt_texture: ViewportTexture) -> Di
 	# ==================== 2. SIGLENT SDG1032X WAVEFORM GENERATOR ====================
 	var fg := Node3D.new()
 	fg.name = "Siglent_SDG1032X"
-	fg.position = Vector3(0.24, 0.0, 0.04)
+	fg.position = Vector3(-0.39, 0.0, 0.11)
+	fg.rotation = Vector3(0.0, 0.46, 0.0)
 	parent.add_child(fg)
 
 	_add_box(fg, "FGChassis", Vector3(0.26, 0.115, 0.28), Vector3(0.0, 0.062, 0.0), _mat(Color(0.76, 0.77, 0.79, 1.0), 0.45, 0.2))
@@ -185,9 +186,10 @@ static func build_oscilloscope(parent: Node, crt_texture: ViewportTexture) -> Di
 
 	# ==================== 3. DUAL P6100 PASSIVE OSCILLOSCOPE PROBES (YELLOW & RED) ====================
 	var probe1 := _build_p6100_probe(parent, 1, "Probe 1 (Yellow)", Color(0.95, 0.80, 0.15, 1.0), interactables, true)
-	var probe2 := _build_p6100_probe(parent, 2, "Probe 2 (Red)", Color(0.90, 0.22, 0.20, 1.0), interactables, false)
+	var probe2 := _build_p6100_probe(parent, 2, "Probe 2 (Red)", Color(0.90, 0.22, 0.20, 1.0), interactables, true)
 
 	var bb_data := Breadboard3DBuilder.build_breadboard_on_bench(parent, snap_targets, interactables)
+	var psu_data := Psu3DBuilder.build_gps3030d_on_bench(parent, bb_data.get("root", null), interactables)
 
 	return {
 		"root": root,
@@ -201,7 +203,8 @@ static func build_oscilloscope(parent: Node, crt_texture: ViewportTexture) -> Di
 		"fg_freq_lbl": fg_freq_lbl,
 		"fg_amp_lbl": fg_amp_lbl,
 		"interactables": interactables,
-		"breadboard": bb_data
+		"breadboard": bb_data,
+		"psu": psu_data
 	}
 
 static func _build_p6100_probe(parent: Node, idx: int, label_prefix: String, ring_color: Color, interactables: Array[Dictionary], has_atten_switch: bool) -> Dictionary:
@@ -251,20 +254,21 @@ static func _build_p6100_probe(parent: Node, idx: int, label_prefix: String, rin
 	_add_cyl(probe_tip, "GndWire", 0.0012, 0.026, Vector3(0.007, -0.005, 0.072), Vector3(PI * 0.48, 0.14, 0), dark_boot_mat)
 	_add_box(probe_tip, "AlligatorClip", Vector3(0.004, 0.004, 0.014), Vector3(0.010, -0.006, 0.086), dark_boot_mat)
 
+	if has_atten_switch:
+		var sw_id := "probe_attenuation_switch" if idx == 1 else "probe2_attenuation_switch"
+		_add_slide_switch_3d(probe_tip, sw_id, "1x / 10x", Vector3(0.0, 0.0075, 0.062), ["1x", "10x"], 0, false, interactables)
+
 	var tip_grab := Node3D.new()
-	tip_grab.position = Vector3(0, 0, 0.045)
+	tip_grab.position = Vector3(0, 0, 0.022)
 	probe_tip.add_child(tip_grab)
 	interactables.append({
 		"type": "draggable_tip",
 		"probe_idx": idx,
 		"title": "%s Hook Tip (Drag to FG CH1/CH2 OUT or CAL 1Vp-p)" % label_prefix,
 		"focus_node": tip_grab,
-		"hit_radius": 0.032,
-		"ring_radius": 0.018
+		"hit_radius": 0.022,
+		"ring_radius": 0.016
 	})
-
-	if has_atten_switch:
-		_add_slide_switch_3d(probe_tip, "probe_attenuation_switch", "1x / 10x", Vector3(0.0, 0.007, 0.056), ["1x", "10x"], 0, false, interactables)
 
 	# 28-Segment Solid 3D Cylindrical Coaxial Cable
 	var cable_segments: Array[MeshInstance3D] = []
@@ -305,10 +309,10 @@ static func update_single_probe(probe_data: Dictionary, snaps: Dictionary, bnc_c
 		bnc_plug.global_position = n.global_position + info["offset"]
 		bnc_plug.rotation = Vector3.ZERO
 	else:
-		# Rest neatly on ESD mat in front of Scope
-		var rest_x := -0.22 if idx == 1 else -0.10
-		bnc_plug.global_position = Vector3(rest_x, 0.011, 0.25)
-		bnc_plug.rotation = Vector3(0.0, 0.25, 0.0)
+		# Rest neatly on ESD mat to left (Probe 1) and right (Probe 2) of breadboard
+		var rest_x := -0.18 if idx == 1 else 0.16
+		bnc_plug.global_position = Vector3(rest_x, 0.011, 0.22)
+		bnc_plug.rotation = Vector3(0.0, 0.18 if idx == 1 else -0.18, 0.0)
 
 	# Position Probe Tip
 	if dragging_kind == "tip":
@@ -324,10 +328,10 @@ static func update_single_probe(probe_data: Dictionary, snaps: Dictionary, bnc_c
 		probe_tip.global_position = n.global_position + offset_v
 		probe_tip.rotation = Vector3(-0.08, -0.06 if tip_tgt == "CAL_1VPP" else -0.15, 0.0)
 	else:
-		# Rest neatly on ESD mat in front of Function Generator
-		var rest_tx := 0.05 if idx == 1 else 0.16
-		probe_tip.global_position = Vector3(rest_tx, 0.011, 0.27)
-		probe_tip.rotation = Vector3(0.0, -0.45, 0.0)
+		# Rest neatly on ESD mat clear of breadboard without crossing cables
+		var rest_tx := -0.14 if idx == 1 else 0.13
+		probe_tip.global_position = Vector3(rest_tx, 0.011, 0.33)
+		probe_tip.rotation = Vector3(0.0, 0.32 if idx == 1 else -0.32, 0.0)
 
 	# Update 28-Segment 3D Coaxial Cable (scale applied AFTER look_at!)
 	var p0 := bnc_plug.global_position + bnc_plug.global_transform.basis.z * 0.052
@@ -358,6 +362,25 @@ static func update_single_probe(probe_data: Dictionary, snaps: Dictionary, bnc_c
 		seg.rotate_object_local(Vector3.RIGHT, PI * 0.5)
 		seg.scale = Vector3(1.0, length, 1.0)
 
+static func _get_knob_dial_ticks(param_id: String, min_v: float, max_v: float, labels: Array) -> Array:
+	if labels.size() > 0:
+		return labels
+	match param_id:
+		"fg_frequency":
+			return ["100", "1k", "2.5k", "4k", "5k"]
+		"fg_amplitude":
+			return ["0.2", "2", "4", "6", "8"]
+		"fg_offset":
+			return ["-3", "-1.5", "0", "+1.5", "+3"]
+		"trigger_level", "vert_pos_div", "ch2_pos":
+			return ["-4", "-2", "0", "+2", "+4"]
+		"horiz_pos_div":
+			return ["-5", "-2.5", "0", "+2.5", "+5"]
+		"probe_compensation":
+			return ["0.65", "1.0", "1.35"]
+		_:
+			return ["0", "5", "10"]
+
 static func _add_rotary_knob_3d(
 	parent: Node3D,
 	param_id: String,
@@ -377,10 +400,50 @@ static func _add_rotary_knob_3d(
 	holder.position = pos
 	parent.add_child(holder)
 
-	_add_label_3d(holder, title, Vector3(0.0, radius + 0.0065, 0.001), 15, COL_SILKSCREEN)
+	var is_fg := param_id.begins_with("fg_")
+	var is_big_dial := param_id in ["time_per_div", "volts_per_div", "ch2_volts"]
+	var tick_col := Color(0.92, 0.94, 0.98) if is_fg else COL_SILKSCREEN
+	var title_y := radius + (0.0118 if is_big_dial else 0.0096)
+	_add_label_3d(holder, title, Vector3(0.0, title_y, 0.0012), 14, tick_col)
 
 	var skirt_mat := _mat(Color(0.86, 0.84, 0.80, 1.0), 0.4, 0.2)
 	_add_cyl(holder, "Skirt", radius * 1.12, 0.003, Vector3(0, 0, 0.0015), Vector3(PI * 0.5, 0, 0), skirt_mat)
+
+	# Circular engraved dial ring around TIME/DIV and VOLTS/DIV (matching real National VP-5231A)
+	if is_big_dial:
+		var ring_mi := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = radius + 0.0068
+		torus.outer_radius = radius + 0.0076
+		torus.rings = 32
+		torus.ring_segments = 8
+		ring_mi.mesh = torus
+		ring_mi.rotation.x = PI * 0.5
+		ring_mi.position = Vector3(0.0, 0.0, 0.0008)
+		ring_mi.material_override = _mat(COL_SILKSCREEN, 0.6, 0.0)
+		holder.add_child(ring_mi)
+		if param_id == "time_per_div":
+			var u_ms := _add_label_3d(holder, "ms", Vector3(-radius - 0.0078, radius + 0.0055, 0.0012), 11, COL_SILKSCREEN)
+			u_ms.pixel_size = 0.00018
+			var u_us := _add_label_3d(holder, "µs", Vector3(radius + 0.0078, radius + 0.0055, 0.0012), 11, COL_SILKSCREEN)
+			u_us.pixel_size = 0.00018
+		else:
+			var u_v := _add_label_3d(holder, "V", Vector3(-radius - 0.0075, radius + 0.0052, 0.0012), 11, COL_SILKSCREEN)
+			u_v.pixel_size = 0.00018
+
+	# Radial scale numbers & tick marks around the knob dial (135 deg CCW -> -135 deg CW)
+	var dial_ticks := _get_knob_dial_ticks(param_id, min_v, max_v, labels)
+	var tick_count := dial_ticks.size()
+	var tick_r := radius + 0.0024
+	var lbl_r := radius + (0.0049 if is_big_dial else 0.0058)
+	for ti in range(tick_count):
+		var frac := float(ti) / float(maxi(tick_count - 1, 1))
+		var ang := lerpf(deg_to_rad(135.0), deg_to_rad(-135.0), frac)
+		var dir := Vector2(-sin(ang), cos(ang))
+		var t_box := _add_box(holder, "Tick_" + str(ti), Vector3(0.0006, 0.0016, 0.0008), Vector3(dir.x * tick_r, dir.y * tick_r, 0.0012), _mat(tick_col, 0.5, 0.1))
+		t_box.rotation.z = ang
+		var l_node := _add_label_3d(holder, str(dial_ticks[ti]), Vector3(dir.x * lbl_r, dir.y * lbl_r, 0.0015), 10, tick_col)
+		l_node.pixel_size = 0.00016
 
 	var rotor := Node3D.new()
 	rotor.name = "Rotor"
