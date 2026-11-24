@@ -432,10 +432,14 @@ func _input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_MIDDLE:
 			_panning = mb.pressed
+			if mb.pressed:
+				_clear_camera_preset_buttons()
 			mouse_default_cursor_shape = Control.CURSOR_MOVE if mb.pressed else Control.CURSOR_ARROW
 			get_viewport().set_input_as_handled()
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			_orbiting = mb.pressed
+			if mb.pressed:
+				_clear_camera_preset_buttons()
 			get_viewport().set_input_as_handled()
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
 			_pick_hovered_control(local_pos)
@@ -455,6 +459,7 @@ func _input(event: InputEvent) -> void:
 			if mb.pressed:
 				if Input.is_key_pressed(KEY_CTRL):
 					_panning = true
+					_clear_camera_preset_buttons()
 					mouse_default_cursor_shape = Control.CURSOR_MOVE
 					get_viewport().set_input_as_handled()
 					return

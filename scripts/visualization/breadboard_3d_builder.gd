@@ -441,7 +441,8 @@ static func generate_breadboard_signal(model_cfg: Dictionary, tp_key: String, sa
 		elif model_id == "RC_LPF" or model_id == "PROCEDURAL_MIX":
 			var r_ohm := float(model_cfg.get("r_ohm", 1000.0))
 			var c_f := float(model_cfg.get("c_farad", 100e-9))
-			var v_amp := psu_vcc * 0.25
+			var base_amp := float(model_cfg.get("v_in_amp", 3.0))
+			var v_amp := base_amp * clampf(psu_vcc / 12.0, 0.0, 1.0)
 			var freq := float(model_cfg.get("freq_hz", 1600.0))
 			var omega := TAU * freq
 			var rc := maxf(r_ohm * c_f, 1e-9)

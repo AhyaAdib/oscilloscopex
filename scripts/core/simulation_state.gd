@@ -277,6 +277,7 @@ func recompute() -> void:
 	var cfg2 := analog_config.duplicate()
 	cfg2["coupling"] = analog_config.get("ch2_coupling", AnalogScopeEngine.CouplingMode.DC)
 	cfg2["vert_pos_div"] = analog_config.get("ch2_vert_pos_div", 0.0)
+	cfg2["probe_attenuation"] = analog_config.get("probe2_attenuation", 1.0)
 	var view2 := view_config.duplicate()
 	view2["volts_per_div"] = view_config.get("ch2_volts_per_div", 1.0)
 	var analog2 := AnalogScopeEngine.process_chain(raw2["times"], raw2["voltages"], dt, cfg2, view2)

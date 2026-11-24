@@ -340,6 +340,10 @@ func _build_workspace() -> void:
 		if not _syncing_ui:
 			SimState.set_analog_param("trigger_level", v)
 	)
+	_add_knob(trig_row, "probe_compensation", "PROBE COMP", 0.65, 1.35, 0.01, 1.0, Color(0.76, 0.72, 0.64, 1.0), [], func(v: float) -> void:
+		if not _syncing_ui:
+			SimState.set_analog_param("probe_compensation", v)
+	)
 
 	var slope_col := VBoxContainer.new()
 	slope_col.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -441,17 +445,6 @@ func _build_workspace() -> void:
 	_challenge_view.jump_to_3d_requested.connect(func() -> void: _set_active_mode(0))
 	_challenge_view.mission_started.connect(func(m: Dictionary) -> void:
 		_set_active_mode(0)
-		if _popup_panel != null:
-			_popup_panel.visible = true
-			_popup_res_lbl.text = ""
-			var mins := int(_challenge_view.time_remaining) / 60
-			var secs := int(_challenge_view.time_remaining) % 60
-			_popup_timer_lbl.text = "⏱ %02d:%02d  |  %s" % [mins, secs, m.get("id", "MISSION")]
-			_popup_desc_lbl.text = str(m.get("description", ""))
-		if str(m.get("req_tip", "")).begins_with("BB_TP"):
-			_workbench_3d._apply_camera_preset(4, false)
-		else:
-			_workbench_3d._apply_camera_preset(0, false)
 	)
 	root_vbox.add_child(_challenge_view)
 
@@ -615,17 +608,18 @@ func _add_compact_slider(parent: Control, param_key: String, name_txt: String, m
 
 
 func _sync_selector_states() -> void:
-	var mode_opt := get_node_or_null("%ModeOption") as OptionButton
-	if mode_opt != null and "lab_mode" in SimState:
-		for i in range(mode_opt.item_count):
-			if mode_opt.get_item_text(i).to_upper() == String(SimState.lab_mode).to_upper():
-				mode_opt.select(i)
+	if SimState == null:
+		return
+	var mode_opt := find_child("ModeOption", true, false) as OptionButton
+	if mode_opt:
+		mode_opt.select(1 if SimState.app_mode == SimState.AppMode.CALIBRATION else 0)
+	var theme_opt := find_child("ThemeOption", true, false) as OptionButton
+	if theme_opt:
+		for i in range(theme_opt.item_count):
+			if theme_opt.get_item_metadata(i) == SimState.lab_theme:
+				theme_opt.select(i)
 				break
-	var theme_opt := get_node_or_null("%ThemeOption") as OptionButton
-	if theme_opt != null and "lab_theme_idx" in SimState:
-		if SimState.lab_theme_idx >= 0 and SimState.lab_theme_idx < theme_opt.item_count:
-			theme_opt.select(SimState.lab_theme_idx)
-	var fg_ch_opt := get_node_or_null("%FgChOption") as OptionButton
-	if fg_ch_opt != null and "fg_selected_ch" in SimState:
-		if SimState.fg_selected_ch >= 0 and SimState.fg_selected_ch < fg_ch_opt.item_count:
-			fg_ch_opt.select(SimState.fg_selected_ch)
+	var fg_ch_opt := find_child("FgChOption", true, false) as OptionButton
+	if fg_ch_opt:
+		var ch_idx := clampi(int(SimState.fg_active_ch) - 1, 0, fg_ch_opt.item_count - 1)
+		fg_ch_opt.select(ch_idx)
