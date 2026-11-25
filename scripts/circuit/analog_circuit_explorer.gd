@@ -2,6 +2,10 @@
 class_name AnalogCircuitExplorer
 extends HBoxContainer
 
+var _arch_controller: ArchitectureController
+var _arch_toolbar: ArchitectureToolbar
+var _diagram_host: Control
+
 const STAGES := [
 	{
 		"id": "N1_INPUT",
@@ -99,6 +103,7 @@ var _flow_phase := 0.0
 func _ready() -> void:
 	add_theme_constant_override("separation", 12)
 	_build_layout()
+	_setup_milestone1_3d_layer()
 	if has_node("/root/SimState"):
 		SimState.state_updated.connect(_refresh_inspector)
 		SimState.selected_node_changed.connect(func(_id: String) -> void: _refresh_inspector())
@@ -366,3 +371,62 @@ func _draw_node_probe_waveform() -> void:
 
 	var font := ThemeDB.fallback_font
 	_probe_canvas.draw_string(font, Vector2(8, 16), "LIVE NODE PROBE (±%.2f V full-scale)" % peak_abs, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.75, 0.85, 0.90, 0.9))
+
+func _setup_milestone1_3d_layer() -> void:
+	if get_child_count() < 1:
+		return
+	var left_node := get_child(0)
+	if left_node == null:
+		return
+
+	_arch_toolbar = ArchitectureToolbar.new()
+	_arch_toolbar.name = "ArchitectureViewToolbar"
+	if left_node is PanelContainer:
+		var inner_vbox := VBoxContainer.new()
+		inner_vbox.name = "LeftArchitectureVBox"
+		inner_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		inner_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		var existing_children: Array[Node] = []
+		for ch in left_node.get_children():
+			existing_children.append(ch)
+		for ch in existing_children:
+			left_node.remove_child(ch)
+		left_node.add_child(inner_vbox)
+		inner_vbox.add_child(_arch_toolbar)
+		for ch in existing_children:
+			if ch is Control:
+				(ch as Control).size_flags_vertical = Control.SIZE_EXPAND_FILL
+			inner_vbox.add_child(ch)
+
+		_diagram_host = Control.new()
+		_diagram_host.name = "Arch3DHostOverlay"
+		_diagram_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_diagram_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		_diagram_host.visible = false
+		_diagram_host.mouse_filter = Control.MOUSE_FILTER_PASS
+		inner_vbox.add_child(_diagram_host)
+
+		_arch_controller = ArchitectureController.new()
+		var view_3d := _arch_controller.build_3d_layer(_diagram_host)
+		view_3d.mouse_filter = Control.MOUSE_FILTER_PASS
+
+		_arch_toolbar.view_mode_changed.connect(func(is_3d: bool) -> void:
+			_diagram_host.visible = is_3d
+			if _arch_controller != null:
+				_arch_controller.set_active(is_3d)
+			for ch in existing_children:
+				if ch is CanvasItem:
+					(ch as CanvasItem).visible = not is_3d
+		)
+		_arch_toolbar.explosion_changed.connect(func(factor: float) -> void:
+			if _arch_controller != null:
+				_arch_controller.set_explosion_factor(factor)
+		)
+		_arch_toolbar.shell_toggled.connect(func(show_shell: bool) -> void:
+			if _arch_controller != null:
+				_arch_controller.set_ghost_shell_visible(show_shell)
+		)
+		_arch_toolbar.reset_camera_requested.connect(func() -> void:
+			if _arch_controller != null:
+				_arch_controller.reset_camera()
+		)
