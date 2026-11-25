@@ -90,11 +90,12 @@ static func process_chain(
 	var comp_state := 0.0
 	var comp_decay := exp(-safe_dt / 0.00008)
 
+	var comp_scale := 1.4 if probe_atten > 1.5 else 0.35
 	for i in range(n):
 		var v_att := coupled[i] * div_factor
-		if probe_atten > 1.5 and i > 0:
-			var dv := v_att - (coupled[i - 1] * div_factor)
-			comp_state = comp_state * comp_decay + dv * (probe_comp - 1.0) * 1.4
+		if i > 0:
+			var dv := v_att - attenuated[i - 1]
+			comp_state = comp_state * comp_decay + dv * (probe_comp - 1.0) * comp_scale
 			v_att += comp_state
 		attenuated[i] = v_att
 		preamp[i] = clampf(v_att * preamp_gain, -AMP_RAIL_VOLTS, AMP_RAIL_VOLTS)

@@ -84,24 +84,32 @@ static func build_mission_instance(mission_idx: int) -> Dictionary:
 		base["true_offset"] = off
 		base["fg_amp"] = amp
 		base["fg_wf"] = SignalGenerator.WaveformType.SINE
-	elif base.get("procedural_bb", false):
-		SimState.select_breadboard_model(3, true)
+	elif base.get("procedural_bb", false) or base.has("bb_model"):
+		if base.get("procedural_bb", false):
+			SimState.select_breadboard_model(3, true)
+		else:
+			SimState.select_breadboard_model(int(base["bb_model"]), false)
 		var cfg := SimState.breadboard_config
-		var omega := TAU * float(cfg["freq_hz"])
-		var rc := float(cfg["r_ohm"]) * float(cfg["c_farad"])
-		var gain := 1.0 / sqrt(1.0 + pow(omega * rc, 2.0))
-		base["true_vpp"] = float(cfg["v_in_amp"]) * 2.0 * gain
-		base["true_freq"] = float(cfg["freq_hz"])
-		base["true_offset"] = 0.0
-	elif base.has("bb_model"):
-		SimState.select_breadboard_model(int(base["bb_model"]), false)
-		if int(base["bb_model"]) == 0:
-			var cfg := SimState.breadboard_config
-			var omega := TAU * float(cfg["freq_hz"])
-			var rc := float(cfg["r_ohm"]) * float(cfg["c_farad"])
-			var gain := 1.0 / sqrt(1.0 + pow(omega * rc, 2.0))
-			base["true_vpp"] = float(cfg["v_in_amp"]) * 2.0 * gain
-			base["true_freq"] = float(cfg["freq_hz"])
+		var model_id := str(cfg.get("id", "RC_LPF"))
+		var psu_vcc := float(cfg.get("psu_vcc", 12.0))
+		var freq := float(cfg.get("freq_hz", float(base.get("true_freq", 1000.0))))
+		var tp_key := str(base.get("req_tip", "BB_TP2"))
+		var sig := Breadboard3DBuilder.generate_breadboard_signal(cfg, tp_key, 4096, maxf(5.0 / maxf(freq, 1.0), 0.005), 0.0)
+		var volts: PackedFloat64Array = sig["volts"]
+		var vmin := volts[0]
+		var vmax := volts[0]
+		var vsum := 0.0
+		for v in volts:
+			if v < vmin:
+				vmin = v
+			if v > vmax:
+				vmax = v
+			vsum += v
+		base["true_vpp"] = vmax - vmin
+		base["true_freq"] = freq
+		base["true_offset"] = vsum / float(maxi(volts.size(), 1)) if psu_vcc > 0.01 else 0.0
+		if model_id == "ASTABLE_555" and psu_vcc < 4.5:
+			base["true_vpp"] = 0.0
 			base["true_offset"] = 0.0
 	return base
 

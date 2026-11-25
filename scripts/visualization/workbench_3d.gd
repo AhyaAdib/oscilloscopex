@@ -293,15 +293,13 @@ func _build_overlay_hud() -> void:
 	var m_sub_btn := Button.new()
 	m_sub_btn.text = "✓ SUBMIT READING & CALIBRATION"
 	m_sub_btn.pressed.connect(func() -> void:
-		var res := ChallengeManager.evaluate_submission(SimState.active_mission_data, _m_vpp_spin.value, _m_freq_spin.value, _m_off_spin.value, SimState.active_time_remaining)
-		SimState.submission_attempts += 1
-		if not res["passed"]:
-			SimState.failed_attempts += 1
-		if res["passed"] or SimState.active_time_remaining <= 0.0:
-			SimState.active_challenge_running = false
-			SimState.last_mission_report = "FINAL: %d/100 (%s) | Attempts: %d (Fails: %d) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "TIME UP", SimState.submission_attempts, SimState.failed_attempts, res["true_vpp"], res["true_freq"], res["true_offset"]]
-		else:
-			SimState.last_mission_report = "Score: %d/100 — KEEP GOING! | Attempts: %d (Fails: %d)\nHint: Route:%s | Comp:%s | Trig:%s | Vpp:%s | Freq:%s" % [res["total_score"], SimState.submission_attempts, SimState.failed_attempts, "OK" if res["routing_ok"] else "NO", "OK" if res["comp_ok"] else "OFF", "OK" if res["trig_ok"] else "NO", "OK" if res["vpp_ok"] else "ERR", "OK" if res["freq_ok"] else "ERR"]
+		SimState.submit_mission_reading(
+			SimState.active_mission_data,
+			_m_vpp_spin.value,
+			_m_freq_spin.value,
+			_m_off_spin.value,
+			SimState.active_time_remaining
+		)
 		_m_res_lbl.text = SimState.last_mission_report
 	)
 	m_vb.add_child(m_sub_btn)
@@ -381,9 +379,9 @@ func _project_cursor_to_drag_world(local_pos: Vector2) -> Vector3:
 	var hit: Variant = _drag_plane.intersects_ray(ray["origin"], ray["dir"])
 	var pt: Vector3 = hit if hit != null else _drag_target_world
 	pt += _drag_grab_offset
-	pt.x = clampf(pt.x, -0.45, 0.50)
+	pt.x = clampf(pt.x, -0.48, 0.52)
 	pt.y = clampf(pt.y, 0.011, 0.28)
-	pt.z = clampf(pt.z, 0.16, 0.34)
+	pt.z = clampf(pt.z, 0.08, 0.36)
 	return pt
 
 func _input(event: InputEvent) -> void:
@@ -536,29 +534,56 @@ func _pick_hovered_control(local_pos: Vector2) -> void:
 		var m_str: String = mode_names[clampi(int(SimState.analog_config.get("vert_mode", 1)), 0, 2)]
 		_hud_label.text = "MODE:%s | P1[%s→%s] P2[%s→%s] | Ctrl+Drag: Pan | Right-Drag: Orbit" % [m_str, p1_b, p1_t, p2_b, p2_t]
 
-func _handle_probe_drag(local_pos: Vector2) -> void:
-	var world_pt := _project_cursor_to_drag_world(local_pos)
+func _place_hover_ring(world_pos: Vector3, ring_scale: float) -> void:
+	if _hover_ring == null:
+		return
+	var pos := world_pos
+	if _camera != null and _camera.is_inside_tree():
+		var to_cam := (_camera.global_position - world_pos).normalized()
+		if to_cam.length_squared() > 0.0001:
+			pos = world_pos + to_cam * 0.008
+	_hover_ring.visible = true
+	_hover_ring.global_position = pos
+	_hover_ring.scale = Vector3(ring_scale, ring_scale, ring_scale)
+	if _camera != null and _camera.is_inside_tree():
+		var cam_pos := _camera.global_position
+		if _hover_ring.global_position.distance_to(cam_pos) > 0.001:
+			var up_vec := Vector3.UP if absf((cam_pos - _hover_ring.global_position).normalized().dot(Vector3.UP)) < 0.98 else Vector3.FORWARD
+			_hover_ring.look_at(cam_pos, up_vec)
+			_hover_ring.rotate_object_local(Vector3.RIGHT, PI * 0.5)
 
+func _find_best_probe_snap(local_pos: Vector2, world_pt: Vector3) -> String:
 	var snaps: Dictionary = _scope_data.get("snap_targets", {})
 	var nearest_key := ""
-	var nearest_dist := 0.060
+	var best_score := 0.075
+	var ray := _screen_to_vp_ray(local_pos)
+	var r_orig: Vector3 = ray["origin"]
+	var r_dir: Vector3 = ray["dir"]
 	for key in snaps.keys():
 		var info: Dictionary = snaps[key]
 		if info["kind"] != _dragging_probe_kind:
 			continue
 		var target_node: Node3D = info["node"]
 		var snap_pos: Vector3 = target_node.global_position + info["offset"]
-		var d := world_pt.distance_to(snap_pos)
-		if d < nearest_dist:
-			nearest_dist = d
+		var d_world := world_pt.distance_to(snap_pos)
+		var t_proj := maxf((snap_pos - r_orig).dot(r_dir), 0.0)
+		var closest_on_ray := r_orig + r_dir * t_proj
+		var d_ray := closest_on_ray.distance_to(snap_pos)
+		var score := minf(d_world, d_ray * 1.15)
+		if score < best_score:
+			best_score = score
 			nearest_key = key
+	return nearest_key
+
+func _handle_probe_drag(local_pos: Vector2) -> void:
+	var world_pt := _project_cursor_to_drag_world(local_pos)
+	var snaps: Dictionary = _scope_data.get("snap_targets", {})
+	var nearest_key := _find_best_probe_snap(local_pos, world_pt)
 
 	if nearest_key != "":
 		var info: Dictionary = snaps[nearest_key]
 		var target_node: Node3D = info["node"]
-		_hover_ring.visible = true
-		_hover_ring.global_position = target_node.global_position + Vector3(0, 0, 0.010)
-		_hover_ring.scale = Vector3(0.017, 0.017, 0.017)
+		_place_hover_ring(target_node.global_position, 0.017)
 		_hud_label.text = "[RELEASE TO PLUG PROBE %d INTO] %s" % [_dragging_probe_idx, info["label"]]
 		_drag_target_world = target_node.global_position + info["offset"]
 	else:
@@ -568,20 +593,7 @@ func _handle_probe_drag(local_pos: Vector2) -> void:
 
 func _finish_probe_drop(local_pos: Vector2) -> void:
 	var world_pt := _project_cursor_to_drag_world(local_pos)
-
-	var snaps: Dictionary = _scope_data.get("snap_targets", {})
-	var nearest_key := ""
-	var nearest_dist := 0.060
-	for key in snaps.keys():
-		var info: Dictionary = snaps[key]
-		if info["kind"] != _dragging_probe_kind:
-			continue
-		var target_node: Node3D = info["node"]
-		var snap_pos: Vector3 = target_node.global_position + info["offset"]
-		var d := world_pt.distance_to(snap_pos)
-		if d < nearest_dist:
-			nearest_dist = d
-			nearest_key = key
+	var nearest_key := _find_best_probe_snap(local_pos, world_pt)
 
 	_hover_ring.visible = false
 	var prefix := "probe1_" if _dragging_probe_idx == 1 else "probe2_"
@@ -596,9 +608,7 @@ func _update_hover_ring(ctrl: Dictionary) -> void:
 		_hover_ring.visible = false
 		return
 	var r: float = float(ctrl.get("ring_radius", 0.014))
-	_hover_ring.visible = true
-	_hover_ring.global_position = focus_node.global_position + Vector3(0.0, 0.0, 0.010)
-	_hover_ring.scale = Vector3(r, r, r)
+	_place_hover_ring(focus_node.global_position, r)
 
 func _update_hover_hud(ctrl: Dictionary) -> void:
 	var t: String = ctrl["type"]
@@ -707,15 +717,25 @@ func _toggle_button_3d(ctrl: Dictionary) -> void:
 		SimState.set_analog_param("psu_power_on", next_psu)
 		_update_hover_hud(ctrl)
 
+var _prev_psu_v := INF
+var _prev_psu_i := INF
+
 func _sync_visuals() -> void:
 	# Sync GW Instek GPS-3030D LED Readout & VOLTS/AMPS Indicators
 	var psu_dict: Dictionary = _scope_data.get("psu", {})
 	if not psu_dict.is_empty() and psu_dict.has("readout_lbl"):
 		var r_lbl: Label3D = psu_dict["readout_lbl"]
 		var p_on := bool(SimState.analog_config.get("psu_power_on", true))
-		var show_a := bool(psu_dict.get("show_amps", false))
 		var v_tot := clampf(float(SimState.analog_config.get("psu_voltage_coarse", 12.0)) + float(SimState.analog_config.get("psu_voltage_fine", 0.0)), 0.0, 30.0)
 		var i_lim := float(SimState.analog_config.get("psu_current_limit", 1.5))
+		if _prev_psu_v != INF and _prev_psu_i != INF:
+			if not is_equal_approx(i_lim, _prev_psu_i) and is_equal_approx(v_tot, _prev_psu_v):
+				psu_dict["show_amps"] = true
+			elif not is_equal_approx(v_tot, _prev_psu_v) and is_equal_approx(i_lim, _prev_psu_i):
+				psu_dict["show_amps"] = false
+		_prev_psu_v = v_tot
+		_prev_psu_i = i_lim
+		var show_a := bool(psu_dict.get("show_amps", false))
 		if not p_on:
 			r_lbl.text = " OFF "
 		elif show_a:

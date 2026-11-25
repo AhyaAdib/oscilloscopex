@@ -285,35 +285,22 @@ func _on_start_mission() -> void:
 	_refresh_hardware_status()
 
 func _on_submit_pressed() -> void:
-	var res := ChallengeManager.evaluate_submission(
+	var payload := SimState.submit_mission_reading(
 		active_mission, _in_vpp.value, _in_freq.value, _in_offset.value, time_remaining
 	)
-	SimState.submission_attempts += 1
-	if not res["passed"]:
-		SimState.failed_attempts += 1
-	if res["passed"] or time_remaining <= 0.0:
+	var res: Dictionary = payload["result"]
+	if payload["finished"]:
 		is_running = false
-		SimState.active_challenge_running = false
+		active_time_remaining_sync()
 	_update_timer_display()
-	var verdict := "[color=#4ade80][b]PASS — LAB PRACTICUM VERIFIED![/b][/color]" if res["passed"] else "[color=#f87171][b]NEEDS RE-CALIBRATION / RE-MEASUREMENT[/b][/color]"
-	var lines: Array[String] = [
-		"%s   |   [b]Score: %d / 100[/b] (Cal: %d/50, Reading: %d/50)" % [verdict, res["total_score"], res["cal_score"], res["read_score"]],
-		"• Probe Routing: %s   |   DC Coupling: %s   |   Trigger Lock: %s   |   Probe Comp: %s" % [
-			"OK" if res["routing_ok"] else "WRONG",
-			"OK" if res["coupling_ok"] else "WRONG",
-			"LOCKED" if res["trig_ok"] else "UNLOCKED",
-			"OK" if res["comp_ok"] else "OFF"
-		],
-		"• Vpp: submitted [b]%.2f V[/b] vs true [b]%.2f V[/b] (err %.1f%%) — %s" % [_in_vpp.value, res["true_vpp"], res["vpp_err_pct"], "PASS" if res["vpp_ok"] else "FAIL"],
-		"• Freq: submitted [b]%.0f Hz[/b] vs true [b]%.0f Hz[/b] (err %.1f%%) — %s" % [_in_freq.value, res["true_freq"], res["freq_err_pct"], "PASS" if res["freq_ok"] else "FAIL"],
-		"• Offset: submitted [b]%.2f V[/b] vs true [b]%.2f V[/b] (err %.2f V) — %s" % [_in_offset.value, res["true_offset"], res["off_err_v"], "PASS" if res["off_ok"] else "FAIL"]
-	]
-	_last_summary = "Score: %d/100 (%s)" % [res["total_score"], "PASS" if res["passed"] else "RETRY"]
-	if res["passed"] or time_remaining <= 0.0:
-		SimState.last_mission_report = "FINAL: %d/100 (%s) | Attempts: %d (Fails: %d) | True: %.2fVpp, %.0fHz, %.2fV" % [res["total_score"], "PASS" if res["passed"] else "TIME UP", SimState.submission_attempts, SimState.failed_attempts, res["true_vpp"], res["true_freq"], res["true_offset"]]
-	else:
-		SimState.last_mission_report = "Score: %d/100 — KEEP GOING! | Attempts: %d (Fails: %d) | Route:%s | Comp:%s | Trig:%s | Vpp:%s | Freq:%s" % [res["total_score"], SimState.submission_attempts, SimState.failed_attempts, "OK" if res["routing_ok"] else "NO", "OK" if res["comp_ok"] else "OFF", "OK" if res["trig_ok"] else "NO", "OK" if res["vpp_ok"] else "ERR", "OK" if res["freq_ok"] else "ERR"]
-	_result_lbl.text = "\n".join(lines)
+	_last_summary = payload["summary"]
+	_result_lbl.text = "
+".join(payload["report_lines"])
+	if res.is_empty():
+		_result_lbl.text = "No active mission evaluated."
+
+func active_time_remaining_sync() -> void:
+	SimState.active_time_remaining = time_remaining
 
 func _update_timer_display() -> void:
 	var mins := int(time_remaining) / 60

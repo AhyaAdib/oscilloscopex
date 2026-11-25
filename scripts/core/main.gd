@@ -611,15 +611,21 @@ func _sync_selector_states() -> void:
 	if SimState == null:
 		return
 	var mode_opt := find_child("ModeOption", true, false) as OptionButton
-	if mode_opt:
-		mode_opt.select(1 if SimState.app_mode == SimState.AppMode.CALIBRATION else 0)
+	if mode_opt != null and mode_opt.item_count > 0:
+		if "lab_mode" in SimState:
+			mode_opt.select(clampi(int(SimState.lab_mode), 0, mode_opt.item_count - 1))
+		elif "app_mode" in SimState and "AppMode" in SimState and "CALIBRATION" in SimState.AppMode:
+			mode_opt.select(1 if SimState.app_mode == SimState.AppMode.CALIBRATION else 0)
 	var theme_opt := find_child("ThemeOption", true, false) as OptionButton
-	if theme_opt:
-		for i in range(theme_opt.item_count):
-			if theme_opt.get_item_metadata(i) == SimState.lab_theme:
-				theme_opt.select(i)
-				break
+	if theme_opt != null and theme_opt.item_count > 0:
+		var target_theme = SimState.lab_theme_idx if "lab_theme_idx" in SimState else (SimState.lab_theme if "lab_theme" in SimState else null)
+		if target_theme != null:
+			for i in range(theme_opt.item_count):
+				if theme_opt.get_item_metadata(i) == target_theme:
+					theme_opt.select(i)
+					break
 	var fg_ch_opt := find_child("FgChOption", true, false) as OptionButton
-	if fg_ch_opt:
-		var ch_idx := clampi(int(SimState.fg_active_ch) - 1, 0, fg_ch_opt.item_count - 1)
+	if fg_ch_opt != null and fg_ch_opt.item_count > 0:
+		var active_ch = SimState.fg_selected_channel if "fg_selected_channel" in SimState else (SimState.fg_active_ch if "fg_active_ch" in SimState else 1)
+		var ch_idx := clampi(int(active_ch) - 1, 0, fg_ch_opt.item_count - 1)
 		fg_ch_opt.select(ch_idx)

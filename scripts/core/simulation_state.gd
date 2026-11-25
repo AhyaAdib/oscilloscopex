@@ -330,3 +330,51 @@ func get_node_stats(node_id: String) -> Dictionary:
 		"v_inst": buf[buf.size() / 2],
 		"buffer": buf
 	}
+
+func submit_mission_reading(mission: Dictionary, sub_vpp: float, sub_freq: float, sub_offset: float, time_left: float) -> Dictionary:
+	var res := ChallengeManager.evaluate_submission(mission, sub_vpp, sub_freq, sub_offset, time_left)
+	submission_attempts += 1
+	if not res["passed"]:
+		failed_attempts += 1
+	var finished := bool(res["passed"]) or time_left <= 0.0
+	if finished:
+		active_challenge_running = false
+		last_mission_report = "FINAL: %d/100 (%s) | Attempts: %d (Fails: %d) | True: %.2fVpp, %.0fHz, %.2fV" % [
+			res["total_score"],
+			"PASS" if res["passed"] else "TIME UP",
+			submission_attempts,
+			failed_attempts,
+			res["true_vpp"],
+			res["true_freq"],
+			res["true_offset"]
+		]
+	else:
+		last_mission_report = "Score: %d/100 — KEEP GOING! | Attempts: %d (Fails: %d) | Route:%s | Comp:%s | Trig:%s | Vpp:%s | Freq:%s" % [
+			res["total_score"],
+			submission_attempts,
+			failed_attempts,
+			"OK" if res["routing_ok"] else "NO",
+			"OK" if res["comp_ok"] else "OFF",
+			"OK" if res["trig_ok"] else "NO",
+			"OK" if res["vpp_ok"] else "ERR",
+			"OK" if res["freq_ok"] else "ERR"
+		]
+	var verdict := "[color=#4ade80][b]PASS — LAB PRACTICUM VERIFIED![/b][/color]" if res["passed"] else "[color=#f87171][b]NEEDS RE-CALIBRATION / RE-MEASUREMENT[/b][/color]"
+	var lines: Array[String] = [
+		"%s   |   [b]Score: %d / 100[/b] (Cal: %d/50, Reading: %d/50)" % [verdict, res["total_score"], res["cal_score"], res["read_score"]],
+		"• Probe Routing: %s   |   DC Coupling: %s   |   Trigger Lock: %s   |   Probe Comp: %s" % [
+			"OK" if res["routing_ok"] else "WRONG",
+			"OK" if res["coupling_ok"] else "WRONG",
+			"LOCKED" if res["trig_ok"] else "UNLOCKED",
+			"OK" if res["comp_ok"] else "OFF"
+		],
+		"• Vpp: submitted [b]%.2f V[/b] vs true [b]%.2f V[/b] (err %.1f%%) — %s" % [sub_vpp, res["true_vpp"], res["vpp_err_pct"], "PASS" if res["vpp_ok"] else "FAIL"],
+		"• Freq: submitted [b]%.0f Hz[/b] vs true [b]%.0f Hz[/b] (err %.1f%%) — %s" % [sub_freq, res["true_freq"], res["freq_err_pct"], "PASS" if res["freq_ok"] else "FAIL"],
+		"• Offset: submitted [b]%.2f V[/b] vs true [b]%.2f V[/b] (err %.2f V) — %s" % [sub_offset, res["true_offset"], res["off_err_v"], "PASS" if res["off_ok"] else "FAIL"]
+	]
+	return {
+		"result": res,
+		"finished": finished,
+		"report_lines": lines,
+		"summary": "Score: %d/100 (%s)" % [res["total_score"], "PASS" if res["passed"] else "RETRY"]
+	}
