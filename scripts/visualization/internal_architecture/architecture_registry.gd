@@ -79,6 +79,7 @@ const SIGNAL_LINKS := {
 	32: {"in": [30, 29],   "out": [33, 50], "node": "N8_SWEEP",       "path": "TRIG"},
 	33: {"in": [32],       "out": [50],     "node": "N8_SWEEP",       "path": "TRIG"},
 	24: {"in": [50, 27],   "out": [3],      "node": "N6_VERT_DEFLECT","path": "VERT"},
+	3:  {"in": [24],       "out": [],       "node": "N6_VERT_DEFLECT","path": "VERT"},
 	26: {"in": [36],       "out": [24],     "node": "N6_VERT_DEFLECT","path": "VERT"},
 	27: {"in": [34, 37],   "out": [24],     "node": "HV_RAIL",        "path": "POWER"},
 	44: {"in": [],         "out": [45],     "node": "LV_RAIL",        "path": "POWER"},

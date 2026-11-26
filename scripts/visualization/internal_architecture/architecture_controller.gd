@@ -158,7 +158,7 @@ func _make_card_style(bg: Color, border: Color, radius := 8, pad := 10) -> Style
 func _build_floating_part_card(parent: Control) -> void:
 	_floating_card = PanelContainer.new()
 	_floating_card.visible = false
-	_floating_card.z_index = 10
+	_floating_card.z_index = 50
 	_floating_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_floating_card.custom_minimum_size = Vector2(248, 0)
 	_floating_card.add_theme_stylebox_override("panel", _make_card_style(Color(0.055, 0.082, 0.125, 0.97), Color(0.24, 0.78, 0.98, 0.95), 8, 9))
@@ -514,6 +514,7 @@ func _build_callout_badges() -> void:
 		btn.add_theme_font_size_override("font_size", 10)
 		btn.mouse_filter = Control.MOUSE_FILTER_STOP
 		btn.pressed.connect(func(): _select_part(pid))
+		btn.z_index = 1
 		_callout_layer.add_child(btn)
 		_badges[pid] = btn
 
@@ -621,6 +622,55 @@ func _on_sim_state_updated() -> void:
 			_selected_channel, wf_name, freq, amp, v_div, t_div_ms, coup
 		]
 
+
+func _sample_active_channel_waveform(n_pts := 110) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if not is_inside_tree() or not has_node("/root/SimState"):
+		return out
+	var sim_node := _get_active_sim_node()
+	var fg: Dictionary = SimState.fg_channels.get(_selected_channel, SimState.fg_channels[1])
+	var wf := int(fg.get("waveform", 0))
+	var freq := float(fg.get("frequency", 1000.0))
+	var amp := float(fg.get("amplitude", 2.0))
+	var dc_off := float(fg.get("offset", 0.0))
+	var noise_v := float(fg.get("noise", 0.0))
+	var v_div := maxf(float(SimState.view_config.get("volts_per_div", 1.0)), 0.05)
+	var t_div := maxf(float(SimState.view_config.get("time_per_div", 0.0005)), 0.00001)
+	var vert_pos := float(SimState.view_config.get("vert_pos_div", 0.0))
+	var coup := int(SimState.analog_config.get("coupling", 0))
+
+	var cycles := clampf(freq * t_div * 10.0, 0.8, 6.0)
+	var stage_gain := 1.0
+	if sim_node == "N3_ATTENUATOR":
+		stage_gain = 0.5
+	elif sim_node == "N4_PREAMP":
+		stage_gain = 1.35
+
+	out.resize(n_pts)
+	for i in range(n_pts):
+		var u := float(i) / float(n_pts - 1)
+		var ph := fmod(u * cycles + _beam_phase, 1.0)
+		var v := 0.0
+		if coup != 2:
+			match wf:
+				0: v = sin(ph * TAU)
+				1: v = 1.0 if ph < 0.5 else -1.0
+				2: v = 4.0 * absf(ph - 0.5) - 1.0
+				3: v = 2.0 * ph - 1.0
+			v = v * amp * stage_gain
+			if coup == 0:
+				v += dc_off * stage_gain
+			if noise_v > 0.001:
+				v += sin(u * 97.0 + _beam_phase * 31.0) * noise_v * 0.5
+		if sim_node == "N8_SWEEP":
+			v = (2.0 * u - 1.0) * v_div * 2.8
+		elif sim_node == "N7_TRIGGER":
+			v = v_div * 2.2 if sin(ph * TAU) >= 0.0 else -v_div * 2.2
+		var norm_x := 2.0 * u - 1.0
+		var norm_y := clampf(((v / v_div) + vert_pos) / 4.0, -0.96, 0.96)
+		out[i] = Vector2(norm_x, norm_y)
+	return out
+
 func _draw_stage_waveform() -> void:
 	if _stage_graph_canvas == null:
 		return
@@ -656,51 +706,14 @@ func _draw_stage_waveform() -> void:
 		_stage_graph_canvas.draw_string(font, Vector2(6, 13), "CH%d · %s" % [_selected_channel, sim_node], HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.96, 0.90, 0.72))
 		return
 
-	# Live parametric waveform directly driven by 3D Workbench CH1/CH2 settings & SimState
-	var fg: Dictionary = SimState.fg_channels.get(_selected_channel, SimState.fg_channels[1])
-	var wf := int(fg.get("waveform", 0))
-	var freq := float(fg.get("frequency", 1000.0))
-	var amp := float(fg.get("amplitude", 2.0))
-	var dc_off := float(fg.get("offset", 0.0))
-	var noise_v := float(fg.get("noise", 0.0))
-	var v_div := maxf(float(SimState.view_config.get("volts_per_div", 1.0)), 0.05)
-	var t_div := maxf(float(SimState.view_config.get("time_per_div", 0.0005)), 0.00001)
-	var vert_pos := float(SimState.view_config.get("vert_pos_div", 0.0))
-	var coup := int(SimState.analog_config.get("coupling", 0)) # 0=DC, 1=AC, 2=GND
-
-	var cycles := clampf(freq * t_div * 10.0, 0.8, 6.0)
-	var stage_gain := 1.0
-	if sim_node == "N3_ATTENUATOR":
-		stage_gain = 0.5
-	elif sim_node == "N4_PREAMP":
-		stage_gain = 1.35
-
+	var norm_pts := _sample_active_channel_waveform(110)
+	if norm_pts.size() < 2:
+		return
 	var pts := PackedVector2Array()
-	var n_pts := 110
-	pts.resize(n_pts)
-	var px_per_div_y := sz.y / 8.0
-	for i in range(n_pts):
-		var u := float(i) / float(n_pts - 1)
-		var ph := fmod(u * cycles + _beam_phase, 1.0)
-		var v := 0.0
-		if coup != 2:
-			match wf:
-				0: v = sin(ph * TAU)
-				1: v = 1.0 if ph < 0.5 else -1.0
-				2: v = 4.0 * absf(ph - 0.5) - 1.0
-				3: v = 2.0 * ph - 1.0
-			v = v * amp * stage_gain
-			if coup == 0:
-				v += dc_off * stage_gain
-			if noise_v > 0.001:
-				v += sin(u * 97.0 + _beam_phase * 31.0) * noise_v * 0.5
-		if sim_node == "N8_SWEEP":
-			v = (2.0 * u - 1.0) * v_div * 2.8
-		elif sim_node == "N7_TRIGGER":
-			v = v_div * 2.2 if sin(ph * TAU) >= 0.0 else -v_div * 2.2
-		var divs_y := (v / v_div) + vert_pos
-		var py := clampf(mid_y - divs_y * px_per_div_y, 2.0, sz.y - 2.0)
-		pts[i] = Vector2(u * sz.x, py)
+	pts.resize(norm_pts.size())
+	for i in range(norm_pts.size()):
+		var np := norm_pts[i]
+		pts[i] = Vector2((np.x + 1.0) * 0.5 * sz.x, mid_y - np.y * (sz.y * 0.48))
 
 	var trace_col := Color(0.28, 0.86, 1.0, 1.0) if _selected_channel == 2 else Color(0.30, 1.0, 0.72, 1.0)
 	if sim_node in ["N7_TRIGGER", "N8_SWEEP"]:
@@ -750,6 +763,7 @@ func _process(delta: float) -> void:
 
 	if _assembly_root != null:
 		_assembly_root.step_physics(delta, y_norm, x_norm, power_on, intensity)
+		_assembly_root.update_crt_screen_waveform(_sample_active_channel_waveform(72), power_on, _selected_channel == 2)
 	if _stage_graph_canvas != null and _drawer_panel != null and _drawer_panel.visible:
 		_stage_graph_canvas.queue_redraw()
 
@@ -812,10 +826,9 @@ func _update_3d_callouts_and_floating_card() -> void:
 			btn.text = "#%02d" % pid
 			btn.modulate = Color(0.32, 0.88, 1.0)
 			if _floating_card != null:
-				_floating_card.position = Vector2(
-					clampf(sp.x + 24.0, x_min, maxf(x_min, x_max - 255.0)),
-					clampf(sp.y - 68.0, 14.0, sz.y - 96.0)
-				)
+				var fx := sp.x + 34.0 if (sp.x + 290.0 < x_max) else maxf(x_min, sp.x - 275.0)
+				var fy := clampf(sp.y - 42.0, 14.0, sz.y - 104.0)
+				_floating_card.position = Vector2(fx, fy)
 		elif is_in:
 			btn.text = "← IN #%02d" % pid
 			btn.modulate = Color(1.0, 0.78, 0.25)
@@ -825,9 +838,14 @@ func _update_3d_callouts_and_floating_card() -> void:
 		else:
 			btn.text = "#%02d" % pid
 			btn.modulate = Color(0.85, 0.90, 0.96, 0.85)
+			if _floating_card != null and _floating_card.visible:
+				var card_rect := Rect2(_floating_card.position - Vector2(18, 14), _floating_card.size + Vector2(36, 28))
+				if card_rect.has_point(sp):
+					btn.visible = false
+					continue
 			var overlap := false
 			for prev in placed:
-				if absf(prev.x - sp.x) < 34.0 and absf(prev.y - sp.y) < 20.0:
+				if absf(prev.x - sp.x) < 38.0 and absf(prev.y - sp.y) < 22.0:
 					overlap = true
 					break
 			if overlap:

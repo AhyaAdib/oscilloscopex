@@ -5,6 +5,9 @@ var assembly_root: Node3D
 var guide_lines_mi: MeshInstance3D
 var flow_tubes_mi: MeshInstance3D
 var crt_beam_mi: MeshInstance3D
+var crt_screen_trace_mi: MeshInstance3D
+var crt_screen_trace_bezel_mi: MeshInstance3D
+
 var crt_y_plate_top: MeshInstance3D
 var crt_y_plate_bot: MeshInstance3D
 var crt_x_plate_l: MeshInstance3D
@@ -113,6 +116,26 @@ func _setup_crt_physics_internals() -> void:
 	crt_beam_mi.material_override = bm
 	crt_node.add_child(crt_beam_mi)
 
+	# Live P31 Phosphor Waveform Trace mounted directly on the 3D CRT Faceplate (#24) & Graticule (#03)
+	var trace_mat := StandardMaterial3D.new()
+	trace_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	trace_mat.albedo_color = Color(0.32, 1.0, 0.66, 0.98)
+	trace_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	trace_mat.no_depth_test = false
+
+	crt_screen_trace_mi = MeshInstance3D.new()
+	crt_screen_trace_mi.name = "CRTScreenPhosphorTrace"
+	crt_screen_trace_mi.material_override = trace_mat
+	crt_node.add_child(crt_screen_trace_mi)
+
+	var grat_rec: Dictionary = _part_map.get(3, {})
+	if not grat_rec.is_empty():
+		var grat_node: Node3D = grat_rec["node"]
+		crt_screen_trace_bezel_mi = MeshInstance3D.new()
+		crt_screen_trace_bezel_mi.name = "GraticulePhosphorTrace"
+		crt_screen_trace_bezel_mi.material_override = trace_mat.duplicate()
+		grat_node.add_child(crt_screen_trace_bezel_mi)
+
 func _make_crt_plate(parent: Node3D, p_name: String, sz: Vector3, pos: Vector3, mat: StandardMaterial3D) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.name = p_name
@@ -123,6 +146,49 @@ func _make_crt_plate(parent: Node3D, p_name: String, sz: Vector3, pos: Vector3, 
 	mi.material_override = mat
 	parent.add_child(mi)
 	return mi
+
+
+func update_crt_screen_waveform(norm_pts: PackedVector2Array, power_on: bool, is_ch2: bool) -> void:
+	for mi in [crt_screen_trace_mi, crt_screen_trace_bezel_mi]:
+		if mi == null:
+			continue
+		mi.visible = power_on and norm_pts.size() >= 2
+		if not mi.visible:
+			continue
+		var mat := mi.material_override as StandardMaterial3D
+		if mat != null:
+			mat.albedo_color = Color(0.28, 0.88, 1.0, 0.98) if is_ch2 else Color(0.30, 1.0, 0.64, 0.98)
+
+	if not power_on or norm_pts.size() < 2:
+		return
+
+	var s := ComponentFactory.CAD_SCALE
+	var half_w := 0.56 * s
+	var half_h := 0.44 * s
+	var thick := 0.007 * s
+	var n := norm_pts.size()
+
+	# Build 3D phosphor trace ribbon on CRT faceplate (z = +1.36*s) and Graticule front (z = +0.035*s)
+	for target_pair in [[crt_screen_trace_mi, 1.36 * s], [crt_screen_trace_bezel_mi, 0.036 * s]]:
+		var target_mi: MeshInstance3D = target_pair[0]
+		if target_mi == null:
+			continue
+		var z_face: float = target_pair[1]
+		var verts := PackedVector3Array()
+		for i in range(n - 1):
+			var a2 := norm_pts[i]
+			var b2 := norm_pts[i + 1]
+			var p0 := Vector3(a2.x * half_w, a2.y * half_h, z_face)
+			var p1 := Vector3(b2.x * half_w, b2.y * half_h, z_face)
+			for off in [Vector3.ZERO, Vector3(0, thick, 0), Vector3(0, -thick, 0), Vector3(thick, 0, 0)]:
+				verts.append(p0 + off)
+				verts.append(p1 + off)
+		var am := ArrayMesh.new()
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+		target_mi.mesh = am
 
 func step_physics(delta: float, y_norm: float, x_norm: float, power_on: bool, intensity: float) -> void:
 	_flow_phase = fmod(_flow_phase + delta * 1.15, 1.0)
