@@ -413,11 +413,17 @@ func _setup_milestone1_3d_layer() -> void:
 
 		_arch_toolbar.view_mode_changed.connect(func(is_3d: bool) -> void:
 			_diagram_host.visible = is_3d
+			if get_child_count() > 1 and get_child(1) is CanvasItem:
+				(get_child(1) as CanvasItem).visible = not is_3d
 			if _arch_controller != null:
 				_arch_controller.set_active(is_3d)
 			for ch in existing_children:
 				if ch is CanvasItem:
 					(ch as CanvasItem).visible = not is_3d
+		)
+		_arch_toolbar.signal_flow_toggled.connect(func(vis: bool) -> void:
+			if _arch_controller != null:
+				_arch_controller.set_signal_flow_visible(vis)
 		)
 		_arch_toolbar.explosion_changed.connect(func(factor: float) -> void:
 			if _arch_controller != null:
@@ -446,6 +452,10 @@ func _setup_milestone1_3d_layer() -> void:
 		_arch_toolbar.drawer_toggled.connect(func(vis: bool) -> void:
 			if _arch_controller != null:
 				_arch_controller.set_drawer_visible(vis)
+		)
+		_arch_controller.drawer_visibility_changed.connect(func(vis: bool) -> void:
+			if _arch_toolbar != null and _arch_toolbar.btn_drawer != null:
+				_arch_toolbar.btn_drawer.set_pressed_no_signal(vis)
 		)
 		_arch_toolbar.shell_toggled.connect(func(show_shell: bool) -> void:
 			if _arch_controller != null:

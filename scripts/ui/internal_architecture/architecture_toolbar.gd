@@ -7,6 +7,7 @@ signal explosion_changed(factor: float)
 signal camera_preset_selected(preset_key: String)
 signal callouts_toggled(show_pins: bool)
 signal guides_toggled(show_axes: bool)
+signal signal_flow_toggled(show_flow: bool)
 signal isolate_toggled(isolate: bool)
 signal drawer_toggled(show_drawer: bool)
 signal shell_toggled(show_shell: bool)
@@ -23,8 +24,9 @@ var btn_100: Button
 var exp_slider: HSlider
 var btn_pins: Button
 var btn_axes: Button
+var btn_flow: Button
 var btn_isolate: Button
-var _is_bp := true
+var _is_bp := false
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 5)
@@ -51,7 +53,7 @@ func _ready() -> void:
 	add_child(btn_drawer)
 
 	btn_style = Button.new()
-	btn_style.text = "Style: Service Manual"
+	btn_style.text = "Style: Hardware 3D"
 	btn_style.visible = false
 	btn_style.pressed.connect(func():
 		_is_bp = not _is_bp
@@ -62,7 +64,7 @@ func _ready() -> void:
 
 	preset_opt = OptionButton.new()
 	preset_opt.visible = false
-	for label in ["Isometric", "Front Panel", "CRT & Atten", "Internal PCBs", "Rear & Power", "Top-Down"]:
+	for label in ["Isometric", "Front Panel", "CRT & Attenuators", "Internal PCBs", "Rear & Power", "Top-Down"]:
 		preset_opt.add_item(label)
 	preset_opt.item_selected.connect(func(idx: int):
 		var keys := ["iso", "front", "crt", "pcb", "rear", "top"]
@@ -93,7 +95,7 @@ func _ready() -> void:
 	exp_slider.max_value = 1.0
 	exp_slider.step = 0.01
 	exp_slider.value = 0.72
-	exp_slider.custom_minimum_size = Vector2(88, 22)
+	exp_slider.custom_minimum_size = Vector2(82, 22)
 	exp_slider.visible = false
 	exp_slider.value_changed.connect(func(v: float): explosion_changed.emit(v))
 	add_child(exp_slider)
@@ -114,6 +116,14 @@ func _ready() -> void:
 	btn_axes.toggled.connect(func(p: bool): guides_toggled.emit(p))
 	add_child(btn_axes)
 
+	btn_flow = Button.new()
+	btn_flow.text = ">> Signal Flow"
+	btn_flow.toggle_mode = true
+	btn_flow.button_pressed = true
+	btn_flow.visible = false
+	btn_flow.toggled.connect(func(p: bool): signal_flow_toggled.emit(p))
+	add_child(btn_flow)
+
 	btn_isolate = Button.new()
 	btn_isolate.text = "Isolate"
 	btn_isolate.toggle_mode = true
@@ -129,6 +139,6 @@ func _set_exp(v: float) -> void:
 func _set_mode(is_3d: bool) -> void:
 	btn_2d.button_pressed = not is_3d
 	btn_3d.button_pressed = is_3d
-	for w in [btn_drawer, btn_style, preset_opt, btn_0, btn_72, btn_100, exp_slider, btn_pins, btn_axes, btn_isolate]:
+	for w in [btn_drawer, btn_style, preset_opt, btn_0, btn_72, btn_100, exp_slider, btn_pins, btn_axes, btn_flow, btn_isolate]:
 		w.visible = is_3d
 	view_mode_changed.emit(is_3d)

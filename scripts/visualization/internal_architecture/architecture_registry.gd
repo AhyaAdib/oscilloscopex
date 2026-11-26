@@ -93,34 +93,37 @@ const SIGNAL_LINKS := {
 const FLOW_PATHS := [
 	{
 		"key": "VERT",
-		"title": "PATH 01: VERTICAL Y-SIGNAL CHAIN",
+		"title": "Vertical Y-Axis Signal Chain",
+		"sub": "Input BNC -> Attenuator -> Preamp -> Delay -> Y-Plates -> CRT",
 		"steps": [
-			{"pid": 17, "label": "01. CH1 BNC & AC/GND/DC"},
-			{"pid": 28, "label": "02. 1MΩ Step Attenuator"},
-			{"pid": 30, "label": "03. JFET Vertical Preamp"},
-			{"pid": 31, "label": "04. 160ns Coax Delay Line"},
-			{"pid": 50, "label": "05. Y/X Deflection Leads"},
-			{"pid": 24, "label": "06. 130BHB31 P31 CRT Beam"}
+			{"pid": 17, "tag": "Signal Entry",  "label": "CH1 INPUT BNC Jack & AC-GND-DC Switch", "hint": "CH1 BNC & AC-GND-DC coupling switch receives probe signal."},
+			{"pid": 28, "tag": "1MΩ Attenuator","label": "CH1 & CH2 Precision Rotary Attenuator Modules", "hint": "1-2-5 frequency-compensated divider scales 5V/div down to preamp range."},
+			{"pid": 30, "tag": "Dual-FET Preamp","label": "Dual Vertical Preamp & Switching PCB (PN-102B)", "hint": "Low-noise JFET buffer & cascode stage amplifies & chops CH1/CH2."},
+			{"pid": 31, "tag": "160ns Delay Line","label": "160ns Coaxial Vertical Signal Delay Line", "hint": "Helical coax delays Y-signal 160ns so trigger starts sweep before pulse edge."},
+			{"pid": 50, "tag": "Plate Drive",   "label": "CRT Vertical & Horizontal Deflection Leads", "hint": "Balanced push-pull leads drive electrostatic Y & X deflection plates."},
+			{"pid": 24, "tag": "P31 Phosphor",  "label": "130BHB31 Rectangular Electrostatic CRT (P31)", "hint": "Electrostatic plates bend the 2kV electron beam onto P31 phosphor."}
 		]
 	},
 	{
 		"key": "TRIG",
-		"title": "PATH 02: TRIGGER & X-SWEEP",
+		"title": "Trigger & Horizontal X-Sweep",
+		"sub": "Trigger Pickoff -> Schmitt -> Miller Ramp -> X-Plates",
 		"steps": [
-			{"pid": 9,  "label": "01. Trigger Level & Slope"},
-			{"pid": 29, "label": "02. TIME/DIV Timing Switch"},
-			{"pid": 32, "label": "03. Schmitt & Miller Sweep"},
-			{"pid": 33, "label": "04. X-Output Driver Stage"}
+			{"pid": 9,  "tag": "Level / Slope", "label": "Trigger SLOPE / LEVEL Dual Control Knob", "hint": "Sets Schmitt comparator voltage threshold & rising/falling slope."},
+			{"pid": 29, "tag": "Timing Caps",   "label": "TIME/DIV 18-Position Timing Capacitor Switch", "hint": "Selects precision polypropylene timing capacitor for sweep rate."},
+			{"pid": 32, "tag": "Miller Sweep",  "label": "Main Horizontal Sweep & Trigger PCB (PN-104A)", "hint": "Generates linear sawtooth ramp & unblanks CRT during forward sweep."},
+			{"pid": 33, "tag": "X-Output Amp",  "label": "X-Deflection Output Transistor Heatsink", "hint": "140V push-pull horizontal output stage sweeps beam left-to-right."}
 		]
 	},
 	{
 		"key": "POWER",
-		"title": "PATH 03: MAINS, LV & -1.5kV HV",
+		"title": "Mains, Low-Voltage & -1.5kV HV",
+		"sub": "IEC AC Inlet -> Transformer -> ±12V/+140V -> -1.5kV CRT",
 		"steps": [
-			{"pid": 44, "label": "01. IEC AC Inlet & Fuse"},
-			{"pid": 34, "label": "02. Shielded EI Transformer"},
-			{"pid": 36, "label": "03. ±12V / +140V Regulator"},
-			{"pid": 37, "label": "04. -1.5kV / +2kV HV Inverter"}
+			{"pid": 44, "tag": "Mains Entry",   "label": "IEC 320-C14 3-Prong AC Power Receptacle", "hint": "Grounded AC mains input with EMI line filter and 1A fuse."},
+			{"pid": 34, "tag": "EI Transformer","label": "Shielded EI-Core Mains Power Transformer", "hint": "Copper-shielded transformer providing isolated heater, LV & HV windings."},
+			{"pid": 36, "tag": "LV Regulators", "label": "Regulated Power Supply & Z-Axis PCB (PN-108C)", "hint": "Delivers precision ±12V analog rails, +140V deflection, & Z-blanking."},
+			{"pid": 37, "tag": "2kV Inverter",  "label": "-1.5kV Cathode & +2kV PDA High-Voltage PCB", "hint": "35kHz flyback multiplier generating -1500V cathode & +2000V PDA."}
 		]
 	}
 ]
