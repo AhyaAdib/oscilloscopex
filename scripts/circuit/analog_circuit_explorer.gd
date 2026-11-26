@@ -407,6 +407,7 @@ func _setup_milestone1_3d_layer() -> void:
 		inner_vbox.add_child(_diagram_host)
 
 		_arch_controller = ArchitectureController.new()
+		_diagram_host.add_child(_arch_controller)
 		var view_3d := _arch_controller.build_3d_layer(_diagram_host)
 		view_3d.mouse_filter = Control.MOUSE_FILTER_PASS
 
@@ -441,6 +442,10 @@ func _setup_milestone1_3d_layer() -> void:
 		_arch_toolbar.isolate_toggled.connect(func(iso: bool) -> void:
 			if _arch_controller != null:
 				_arch_controller.set_isolate_selected(iso)
+		)
+		_arch_toolbar.drawer_toggled.connect(func(vis: bool) -> void:
+			if _arch_controller != null:
+				_arch_controller.set_drawer_visible(vis)
 		)
 		_arch_toolbar.shell_toggled.connect(func(show_shell: bool) -> void:
 			if _arch_controller != null:

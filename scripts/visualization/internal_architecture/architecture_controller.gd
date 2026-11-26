@@ -6,7 +6,7 @@ signal part_selected(part_cfg: Dictionary)
 const PRESETS := {
 	"iso":   {"pos": Vector3(0.65, 0.44, 0.70), "target": Vector3(0.0, 0.0, 0.02)},
 	"front": {"pos": Vector3(0.0, 0.02, 0.88),  "target": Vector3(0.0, 0.0, 0.13)},
-	"crt":   {"pos": Vector3(-0.50, 0.24, 0.48),"target": Vector3(-0.09, 0.03, 0.10)},
+	"crt":   {"pos": Vector3(-0.46, 0.22, 0.44),"target": Vector3(-0.10, 0.02, 0.08)},
 	"pcb":   {"pos": Vector3(0.68, 0.19, 0.10), "target": Vector3(0.09, 0.01, 0.01)},
 	"rear":  {"pos": Vector3(-0.55, 0.31, -0.72),"target": Vector3(0.0, -0.02, -0.13)},
 	"top":   {"pos": Vector3(0.01, 0.96, 0.04), "target": Vector3(0.0, 0.0, 0.0)}
@@ -16,10 +16,16 @@ var _view_3d_container: Control
 var _sub_viewport: SubViewport
 var _viewport_rect: TextureRect
 var _callout_layer: Control
+var _drawer_panel: PanelContainer
+var _stage_graph_canvas: Control
+var _drawer_sync_lbl: Label
+var _drawer_metrics_lbl: Label
+var _path_buttons := {}
 var _inspector_popup: PanelContainer
 var _insp_title: Label
 var _insp_meta: Label
 var _insp_desc: Label
+var _insp_flow_box: HBoxContainer
 var _camera: Camera3D
 var _env: Environment
 var _assembly_root: InternalAssemblyRoot
@@ -37,6 +43,7 @@ var _show_pins := true
 var _selected_id := -1
 var _hovered_id := -1
 var _isolate := false
+var _beam_phase := 0.0
 
 func build_3d_layer(parent_host: Control) -> Control:
 	_view_3d_container = Control.new()
@@ -72,12 +79,13 @@ func build_3d_layer(parent_host: Control) -> Control:
 	_callout_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_view_3d_container.add_child(_callout_layer)
 
+	_build_flow_tree_drawer(_view_3d_container)
 	_build_inspector_popup(_view_3d_container)
 
 	var we := WorldEnvironment.new()
 	_env = Environment.new()
 	_env.background_mode = Environment.BG_COLOR
-	_env.background_color = Color(0.957, 0.965, 0.976) # #f4f6f9 Service Manual Blueprint
+	_env.background_color = Color(0.957, 0.965, 0.976)
 	_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	_env.ambient_light_color = Color.WHITE
 	_env.ambient_light_energy = 0.92
@@ -103,13 +111,88 @@ func build_3d_layer(parent_host: Control) -> Control:
 	_build_callout_badges()
 	set_camera_preset("iso")
 	_view_3d_container.resized.connect(_on_container_resized)
+
+	if (is_inside_tree() and has_node("/root/SimState")):
+		SimState.state_updated.connect(_on_sim_state_updated)
 	return _view_3d_container
+
+func _build_flow_tree_drawer(parent: Control) -> void:
+	_drawer_panel = PanelContainer.new()
+	_drawer_panel.name = "FlowTreeScopeLabDrawer"
+	_drawer_panel.position = Vector2(12, 12)
+	_drawer_panel.custom_minimum_size = Vector2(276, 460)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.09, 0.13, 0.92)
+	sb.border_color = Color(0.18, 0.42, 0.56, 0.90)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(8)
+	sb.set_content_margin_all(10)
+	_drawer_panel.add_theme_stylebox_override("panel", sb)
+	parent.add_child(_drawer_panel)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_drawer_panel.add_child(scroll)
+
+	var vb := VBoxContainer.new()
+	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vb.add_theme_constant_override("separation", 6)
+	scroll.add_child(vb)
+
+	var hdr := Label.new()
+	hdr.text = "ARCHITECTURE FLOW TREE & SCOPE LAB"
+	hdr.add_theme_font_size_override("font_size", 11)
+	hdr.add_theme_color_override("font_color", Color(0.32, 0.92, 0.98))
+	vb.add_child(hdr)
+
+	_drawer_sync_lbl = Label.new()
+	_drawer_sync_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_drawer_sync_lbl.add_theme_font_size_override("font_size", 10)
+	_drawer_sync_lbl.add_theme_color_override("font_color", Color(0.75, 0.85, 0.92))
+	vb.add_child(_drawer_sync_lbl)
+
+	_stage_graph_canvas = Control.new()
+	_stage_graph_canvas.custom_minimum_size = Vector2(246, 122)
+	_stage_graph_canvas.draw.connect(_draw_stage_waveform)
+	vb.add_child(_stage_graph_canvas)
+
+	_drawer_metrics_lbl = Label.new()
+	_drawer_metrics_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_drawer_metrics_lbl.add_theme_font_size_override("font_size", 11)
+	_drawer_metrics_lbl.add_theme_color_override("font_color", Color(0.35, 1.0, 0.72))
+	vb.add_child(_drawer_metrics_lbl)
+
+	vb.add_child(HSeparator.new())
+
+	for path_cfg in ArchitectureRegistry.FLOW_PATHS:
+		var p_lbl := Label.new()
+		p_lbl.text = path_cfg["title"]
+		p_lbl.add_theme_font_size_override("font_size", 10)
+		p_lbl.add_theme_color_override("font_color", Color(0.98, 0.78, 0.28))
+		vb.add_child(p_lbl)
+
+		for step in path_cfg["steps"]:
+			var pid: int = int(step["pid"])
+			var b := Button.new()
+			b.text = step["label"]
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.add_theme_font_size_override("font_size", 11)
+			b.pressed.connect(func():
+				_select_part(pid)
+				_focus_part_camera(pid)
+			)
+			vb.add_child(b)
+			_path_buttons[pid] = b
 
 func _build_inspector_popup(parent: Control) -> void:
 	_inspector_popup = PanelContainer.new()
 	_inspector_popup.visible = false
-	_inspector_popup.position = Vector2(14, 14)
-	_inspector_popup.custom_minimum_size = Vector2(340, 0)
+	_inspector_popup.anchor_left = 1.0
+	_inspector_popup.anchor_right = 1.0
+	_inspector_popup.offset_left = -362.0
+	_inspector_popup.offset_right = -14.0
+	_inspector_popup.offset_top = 14.0
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.07, 0.10, 0.15, 0.94)
 	sb.border_color = Color(0.02, 0.52, 0.78, 0.9)
@@ -141,6 +224,10 @@ func _build_inspector_popup(parent: Control) -> void:
 	_insp_meta.add_theme_color_override("font_color", Color(0.98, 0.78, 0.24))
 	vb.add_child(_insp_meta)
 
+	_insp_flow_box = HBoxContainer.new()
+	_insp_flow_box.add_theme_constant_override("separation", 5)
+	vb.add_child(_insp_flow_box)
+
 	_insp_desc = Label.new()
 	_insp_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_insp_desc.add_theme_color_override("font_color", Color(0.92, 0.95, 0.98))
@@ -167,6 +254,11 @@ func set_active(active: bool) -> void:
 		_camera.current = true
 		call_deferred("_on_container_resized")
 		_update_camera()
+		_on_sim_state_updated()
+
+func set_drawer_visible(vis: bool) -> void:
+	if _drawer_panel != null:
+		_drawer_panel.visible = vis
 
 func set_render_style(is_blueprint: bool) -> void:
 	if _env != null:
@@ -183,6 +275,13 @@ func set_callouts_visible(vis: bool) -> void:
 	_show_pins = vis
 	if _callout_layer != null:
 		_callout_layer.visible = vis
+
+func set_ghost_shell_visible(vis: bool) -> void:
+	if _assembly_root != null:
+		_assembly_root.set_shell_visible(vis)
+
+func reset_camera() -> void:
+	set_camera_preset("iso")
 
 func set_guides_visible(vis: bool) -> void:
 	if _assembly_root != null:
@@ -203,8 +302,124 @@ func set_camera_preset(key: String) -> void:
 	_pitch = -asin(clampf(off.y / maxf(0.01, _dist), -0.98, 0.98))
 	_update_camera()
 
-func _process(_delta: float) -> void:
-	if not _view_3d_container.visible or not _show_pins or _camera == null:
+func _focus_part_camera(pid: int) -> void:
+	if _assembly_root == null:
+		return
+	for rec in _assembly_root.part_records:
+		if int(rec["id"]) == pid:
+			var n: Node3D = rec["node"]
+			_target = n.position
+			_dist = clampf(_dist, 0.42, 0.72)
+			_update_camera()
+			break
+
+func _on_sim_state_updated() -> void:
+	if _stage_graph_canvas != null:
+		_stage_graph_canvas.queue_redraw()
+	if not (is_inside_tree() and has_node("/root/SimState")) or _drawer_sync_lbl == null:
+		return
+	var v_div := float(SimState.view_config.get("volts_per_div", 1.0))
+	var t_div_ms := float(SimState.view_config.get("time_per_div", 0.0005)) * 1000.0
+	var coup: String = AnalogScopeEngine.COUPLING_NAMES[int(SimState.analog_config.get("coupling", 0))]
+	var fg1: Dictionary = SimState.fg_channels.get(1, {})
+	_drawer_sync_lbl.text = "Workbench Sync: %.2fV/div | %.2fms/div | %s | FG1 %.0fHz %.1fVpp" % [
+		v_div, t_div_ms, coup, float(fg1.get("frequency", 1000.0)), float(fg1.get("amplitude", 2.0)) * 2.0
+	]
+	var active_pid := _selected_id if _selected_id > 0 else 24
+	var fl := ArchitectureRegistry.get_flow(active_pid)
+	var sim_node: String = str(fl.get("node", "N3_ATTENUATOR"))
+	if sim_node in ["LV_RAIL", "HV_RAIL"]:
+		_drawer_metrics_lbl.text = "Stage: %s | -1500V Cathode / +2000V PDA | ±12V & +140V Regulated" % sim_node
+	else:
+		var st := SimState.get_node_stats(sim_node)
+		_drawer_metrics_lbl.text = "Stage %s: Vpp=%.2fV | Vrms=%.2fV | Y-Plate=±%.1fV" % [
+			sim_node, float(st["v_pp"]), float(st["v_rms"]), clampf(float(st["v_pp"]) * 7.0, 0.0, 56.0)
+		]
+
+func _draw_stage_waveform() -> void:
+	if _stage_graph_canvas == null:
+		return
+	var sz := _stage_graph_canvas.size
+	_stage_graph_canvas.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.02, 0.06, 0.08, 1.0), true)
+	_stage_graph_canvas.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.18, 0.45, 0.56, 1.0), false, 1.2)
+
+	# 8x10 Graticule grid
+	var grid_col := Color(0.10, 0.24, 0.28, 0.85)
+	for c in range(1, 10):
+		var gx := sz.x * float(c) / 10.0
+		_stage_graph_canvas.draw_line(Vector2(gx, 0), Vector2(gx, sz.y), grid_col, 1.0)
+	for r in range(1, 8):
+		var gy := sz.y * float(r) / 8.0
+		_stage_graph_canvas.draw_line(Vector2(0, gy), Vector2(sz.x, gy), grid_col, 1.0)
+
+	var mid_y := sz.y * 0.5
+	_stage_graph_canvas.draw_line(Vector2(0, mid_y), Vector2(sz.x, mid_y), Color(0.20, 0.44, 0.48, 1.0), 1.2)
+
+	if not (is_inside_tree() and has_node("/root/SimState")) or not bool(SimState.view_config.get("power_on", true)):
+		return
+
+	var active_pid := _selected_id if _selected_id > 0 else 24
+	var fl := ArchitectureRegistry.get_flow(active_pid)
+	var sim_node: String = str(fl.get("node", "N3_ATTENUATOR"))
+	var font := ThemeDB.fallback_font
+
+	if sim_node in ["LV_RAIL", "HV_RAIL"]:
+		var is_hv := (sim_node == "HV_RAIL")
+		var pts := PackedVector2Array()
+		for i in range(65):
+			var u := float(i) / 64.0
+			var ripple := sin(u * TAU * 8.0 + _beam_phase * TAU) * (3.5 if is_hv else 1.5)
+			var base_y := (sz.y * 0.72 if is_hv else sz.y * 0.28) + ripple
+			pts.append(Vector2(u * sz.x, base_y))
+		_stage_graph_canvas.draw_polyline(pts, Color(1.0, 0.38, 0.32) if is_hv else Color(1.0, 0.82, 0.25), 2.0, true)
+		_stage_graph_canvas.draw_string(font, Vector2(6, 14), "-1500V / +2kV HV RAIL (35kHz)" if is_hv else "+12V / -12V / +140V DC RAIL", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.95, 0.90, 0.75))
+		return
+
+	var stats := SimState.get_node_stats(sim_node)
+	var buf: PackedFloat64Array = stats["buffer"]
+	var n := buf.size()
+	if n < 2:
+		return
+
+	var peak_abs := maxf(maxf(absf(stats["v_min"]), absf(stats["v_max"])) * 1.25, 0.4)
+	var px_per_v := (sz.y * 0.44) / peak_abs
+	var step_x := sz.x / float(n - 1)
+	var pts := PackedVector2Array()
+	pts.resize(n)
+	for i in range(n):
+		pts[i] = Vector2(float(i) * step_x, mid_y - float(buf[i]) * px_per_v)
+
+	var trace_col := Color(1.0, 0.80, 0.28, 1.0) if sim_node in ["N7_TRIGGER", "N8_SWEEP"] else Color(0.28, 1.0, 0.68, 1.0)
+	_stage_graph_canvas.draw_polyline(pts, trace_col, 2.0, true)
+	_stage_graph_canvas.draw_string(font, Vector2(6, 14), "%s (±%.2fV)" % [sim_node, peak_abs], HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.82, 0.95, 0.92))
+
+func _process(delta: float) -> void:
+	if not _view_3d_container.visible or _camera == null:
+		return
+
+	# Synchronize 3D CRT electron beam & deflection plates with live SimState waveform
+	var y_norm := 0.0
+	var x_norm := 0.0
+	var power_on := true
+	var intensity := 0.85
+	if (is_inside_tree() and has_node("/root/SimState")):
+		power_on = bool(SimState.view_config.get("power_on", true))
+		intensity = float(SimState.analog_config.get("intensity", 0.85))
+		var freq := float(SimState.fg_channels[1].get("frequency", 1000.0))
+		_beam_phase = fmod(_beam_phase + delta * clampf(freq / 650.0, 0.4, 3.5), 1.0)
+		var y_buf: PackedFloat64Array = SimState.voltage_buffer
+		if y_buf.size() > 2:
+			var idx := int(_beam_phase * float(y_buf.size() - 1))
+			var v_div := maxf(float(SimState.view_config.get("volts_per_div", 1.0)), 0.05)
+			y_norm = clampf(float(y_buf[idx]) / (v_div * 4.0), -1.0, 1.0)
+		x_norm = lerpf(-1.0, 1.0, _beam_phase)
+
+	if _assembly_root != null:
+		_assembly_root.step_physics(delta, y_norm, x_norm, power_on, intensity)
+	if _stage_graph_canvas != null and _drawer_panel != null and _drawer_panel.visible:
+		_stage_graph_canvas.queue_redraw()
+
+	if not _show_pins:
 		return
 	var placed: Array[Vector2] = []
 	var sz := _view_3d_container.size
@@ -239,13 +454,46 @@ func _process(_delta: float) -> void:
 func _select_part(pid: int) -> void:
 	_selected_id = pid
 	_assembly_root.set_selection(_selected_id, _hovered_id, _isolate)
+	for k in _path_buttons.keys():
+		var b: Button = _path_buttons[k]
+		b.modulate = Color(0.35, 1.0, 0.78) if int(k) == pid else Color.WHITE
+
+	_on_sim_state_updated()
 	if pid <= 0:
 		_inspector_popup.visible = false
 		return
+
 	var cfg := ArchitectureRegistry.get_part(pid)
+	var fl := ArchitectureRegistry.get_flow(pid)
 	_insp_title.text = "#%02d [%s] — %s" % [pid, cfg["code"], cfg["name"]]
 	_insp_meta.text = "%s | %s | %s" % [cfg["subsystem"], cfg["axis"], cfg["spec"]]
-	_insp_desc.text = "%s\n\nService Note: %s" % [cfg["desc"], cfg["service"]]
+	_insp_desc.text = "%s
+
+Service Note: %s" % [cfg["desc"], cfg["service"]]
+
+	for ch in _insp_flow_box.get_children():
+		ch.queue_free()
+	for uid in fl.get("in", []):
+		var u_id := int(uid)
+		var btn_in := Button.new()
+		btn_in.text = "← IN #%02d" % u_id
+		btn_in.modulate = Color(1.0, 0.78, 0.28)
+		btn_in.pressed.connect(func():
+			_select_part(u_id)
+			_focus_part_camera(u_id)
+		)
+		_insp_flow_box.add_child(btn_in)
+	for did in fl.get("out", []):
+		var d_id := int(did)
+		var btn_out := Button.new()
+		btn_out.text = "OUT #%02d →" % d_id
+		btn_out.modulate = Color(0.32, 1.0, 0.72)
+		btn_out.pressed.connect(func():
+			_select_part(d_id)
+			_focus_part_camera(d_id)
+		)
+		_insp_flow_box.add_child(btn_out)
+
 	_inspector_popup.visible = true
 	part_selected.emit(cfg)
 

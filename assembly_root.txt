@@ -1,0 +1,398 @@
+=== FILE: scripts/visualization/internal_architecture/architecture_controller.gd ===
+class_name ArchitectureController
+extends Control
+
+signal part_selected(part_cfg: Dictionary)
+
+const PRESETS := {
+	"iso":   {"pos": Vector3(0.65, 0.44, 0.70), "target": Vector3(0.0, 0.0, 0.02)},
+	"front": {"pos": Vector3(0.0, 0.02, 0.88),  "target": Vector3(0.0, 0.0, 0.13)},
+	"crt":   {"pos": Vector3(-0.50, 0.24, 0.48),"target": Vector3(-0.09, 0.03, 0.10)},
+	"pcb":   {"pos": Vector3(0.68, 0.19, 0.10), "target": Vector3(0.09, 0.01, 0.01)},
+	"rear":  {"pos": Vector3(-0.55, 0.31, -0.72),"target": Vector3(0.0, -0.02, -0.13)},
+	"top":   {"pos": Vector3(0.01, 0.96, 0.04), "target": Vector3(0.0, 0.0, 0.0)}
+}
+
+var _view_3d_container: Control
+var _sub_viewport: SubViewport
+var _viewport_rect: TextureRect
+var _callout_layer: Control
+var _inspector_popup: PanelContainer
+var _insp_title: Label
+var _insp_meta: Label
+var _insp_desc: Label
+var _camera: Camera3D
+var _env: Environment
+var _assembly_root: InternalAssemblyRoot
+var _badges := {}
+
+var _yaw := 0.75
+var _pitch := -0.42
+var _dist := 1.05
+var _target := Vector3(0.0, 0.0, 0.02)
+var _orbiting := false
+var _panning := false
+var _last_mouse := Vector2.ZERO
+var _press_pos := Vector2.ZERO
+var _show_pins := true
+var _selected_id := -1
+var _hovered_id := -1
+var _isolate := false
+
+func build_3d_layer(parent_host: Control) -> Control:
+	_view_3d_container = Control.new()
+	_view_3d_container.name = "Arch3DViewContainer"
+	_view_3d_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_view_3d_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_view_3d_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_view_3d_container.visible = false
+	_view_3d_container.gui_input.connect(_on_viewport_gui_input)
+	parent_host.add_child(_view_3d_container)
+
+	_sub_viewport = SubViewport.new()
+	_sub_viewport.name = "Arch3DSubViewport"
+	_sub_viewport.own_world_3d = true
+	_sub_viewport.msaa_3d = Viewport.MSAA_DISABLED
+	_sub_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+	_sub_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_sub_viewport.size = Vector2i(800, 520)
+	_view_3d_container.add_child(_sub_viewport)
+
+	_viewport_rect = TextureRect.new()
+	_viewport_rect.name = "Arch3DViewportRect"
+	_viewport_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_viewport_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_viewport_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	_viewport_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_viewport_rect.texture = _sub_viewport.get_texture()
+	_view_3d_container.add_child(_viewport_rect)
+
+	_callout_layer = Control.new()
+	_callout_layer.name = "CalloutBadgeLayer"
+	_callout_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_callout_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_view_3d_container.add_child(_callout_layer)
+
+	_build_inspector_popup(_view_3d_container)
+
+	var we := WorldEnvironment.new()
+	_env = Environment.new()
+	_env.background_mode = Environment.BG_COLOR
+	_env.background_color = Color(0.957, 0.965, 0.976) # #f4f6f9 Service Manual Blueprint
+	_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	_env.ambient_light_color = Color.WHITE
+	_env.ambient_light_energy = 0.92
+	we.environment = _env
+	_sub_viewport.add_child(we)
+
+	var key_light := DirectionalLight3D.new()
+	key_light.position = Vector3(0.7, 1.1, 0.9)
+	key_light.look_at_from_position(key_light.position, Vector3.ZERO, Vector3.UP)
+	key_light.light_energy = 0.85
+	_sub_viewport.add_child(key_light)
+
+	_camera = Camera3D.new()
+	_camera.fov = 40.0
+	_camera.near = 0.01
+	_camera.far = 20.0
+	_sub_viewport.add_child(_camera)
+	_camera.current = true
+
+	_assembly_root = InternalAssemblyRoot.new()
+	_sub_viewport.add_child(_assembly_root)
+
+	_build_callout_badges()
+	set_camera_preset("iso")
+	_view_3d_container.resized.connect(_on_container_resized)
+	return _view_3d_container
+
+func _build_inspector_popup(parent: Control) -> void:
+	_inspector_popup = PanelContainer.new()
+	_inspector_popup.visible = false
+	_inspector_popup.position = Vector2(14, 14)
+	_inspector_popup.custom_minimum_size = Vector2(340, 0)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.07, 0.10, 0.15, 0.94)
+	sb.border_color = Color(0.02, 0.52, 0.78, 0.9)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(8)
+	sb.set_content_margin_all(12)
+	_inspector_popup.add_theme_stylebox_override("panel", sb)
+	parent.add_child(_inspector_popup)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	_inspector_popup.add_child(vb)
+
+	var hb := HBoxContainer.new()
+	vb.add_child(hb)
+	_insp_title = Label.new()
+	_insp_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_insp_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_insp_title.add_theme_color_override("font_color", Color(0.22, 0.78, 0.98))
+	hb.add_child(_insp_title)
+
+	var close_btn := Button.new()
+	close_btn.text = "✕"
+	close_btn.pressed.connect(func(): _select_part(-1))
+	hb.add_child(close_btn)
+
+	_insp_meta = Label.new()
+	_insp_meta.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_insp_meta.add_theme_color_override("font_color", Color(0.98, 0.78, 0.24))
+	vb.add_child(_insp_meta)
+
+	_insp_desc = Label.new()
+	_insp_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_insp_desc.add_theme_color_override("font_color", Color(0.92, 0.95, 0.98))
+	vb.add_child(_insp_desc)
+
+func _build_callout_badges() -> void:
+	for rec in _assembly_root.part_records:
+		var pid: int = rec["id"]
+		var btn := Button.new()
+		btn.text = "%02d" % pid
+		btn.custom_minimum_size = Vector2(24, 18)
+		btn.mouse_filter = Control.MOUSE_FILTER_STOP
+		btn.pressed.connect(func(): _select_part(pid))
+		_callout_layer.add_child(btn)
+		_badges[pid] = btn
+
+func set_active(active: bool) -> void:
+	if _view_3d_container == null:
+		return
+	_view_3d_container.visible = active
+	_sub_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
+	set_process(active)
+	if active:
+		_camera.current = true
+		call_deferred("_on_container_resized")
+		_update_camera()
+
+func set_render_style(is_blueprint: bool) -> void:
+	if _env != null:
+		_env.background_color = Color(0.957, 0.965, 0.976) if is_blueprint else Color(0.078, 0.098, 0.137)
+		_env.ambient_light_energy = 0.92 if is_blueprint else 0.65
+	if _assembly_root != null:
+		_assembly_root.set_blueprint_mode(is_blueprint)
+
+func set_explosion_factor(factor: float) -> void:
+	if _assembly_root != null:
+		_assembly_root.apply_explosion_factor(factor)
+
+func set_callouts_visible(vis: bool) -> void:
+	_show_pins = vis
+	if _callout_layer != null:
+		_callout_layer.visible = vis
+
+func set_guides_visible(vis: bool) -> void:
+	if _assembly_root != null:
+		_assembly_root.set_guides_visible(vis)
+
+func set_isolate_selected(iso: bool) -> void:
+	_isolate = iso
+	if _assembly_root != null:
+		_assembly_root.set_selection(_selected_id, _hovered_id, _isolate)
+
+func set_camera_preset(key: String) -> void:
+	var p: Dictionary = PRESETS.get(key, PRESETS["iso"])
+	var pos: Vector3 = p["pos"]
+	_target = p["target"]
+	var off := pos - _target
+	_dist = off.length()
+	_yaw = atan2(off.x, off.z)
+	_pitch = -asin(clampf(off.y / maxf(0.01, _dist), -0.98, 0.98))
+	_update_camera()
+
+func _process(_delta: float) -> void:
+	if not _view_3d_container.visible or not _show_pins or _camera == null:
+		return
+	var placed: Array[Vector2] = []
+	var sz := _view_3d_container.size
+	for rec in _assembly_root.part_records:
+		var pid: int = rec["id"]
+		var btn: Button = _badges[pid]
+		if (_selected_id > 0 and pid != _selected_id) or (_isolate and _selected_id > 0 and pid != _selected_id):
+			btn.visible = false
+			continue
+		var n: Node3D = rec["node"]
+		var world_p := n.global_position + (rec["pin_offset"] as Vector3)
+		if _camera.is_position_behind(world_p):
+			btn.visible = false
+			continue
+		var sp := _camera.unproject_position(world_p)
+		if sp.x < 12.0 or sp.x > sz.x - 28.0 or sp.y < 12.0 or sp.y > sz.y - 24.0:
+			btn.visible = false
+			continue
+		if pid != _selected_id and pid != _hovered_id:
+			var overlap := false
+			for prev in placed:
+				if absf(prev.x - sp.x) < 26.0 and absf(prev.y - sp.y) < 19.0:
+					overlap = true
+					break
+			if overlap:
+				btn.visible = false
+				continue
+		placed.append(sp)
+		btn.visible = true
+		btn.position = sp - Vector2(12, 9)
+
+func _select_part(pid: int) -> void:
+	_selected_id = pid
+	_assembly_root.set_selection(_selected_id, _hovered_id, _isolate)
+	if pid <= 0:
+		_inspector_popup.visible = false
+		return
+	var cfg := ArchitectureRegistry.get_part(pid)
+	_insp_title.text = "#%02d [%s] — %s" % [pid, cfg["code"], cfg["name"]]
+	_insp_meta.text = "%s | %s | %s" % [cfg["subsystem"], cfg["axis"], cfg["spec"]]
+	_insp_desc.text = "%s\n\nService Note: %s" % [cfg["desc"], cfg["service"]]
+	_inspector_popup.visible = true
+	part_selected.emit(cfg)
+
+func _pick_part_at(mouse_pos: Vector2) -> int:
+	if _camera == null or _assembly_root == null:
+		return -1
+	var vp_pos := mouse_pos * (Vector2(_sub_viewport.size) / _view_3d_container.size.max(Vector2.ONE))
+	var ray_o := _camera.project_ray_origin(vp_pos)
+	var ray_d := _camera.project_ray_normal(vp_pos)
+	var best_id := -1
+	var best_t := 1e9
+	for rec in _assembly_root.part_records:
+		var n: Node3D = rec["node"]
+		var center := n.global_position
+		var to_c := center - ray_o
+		var proj := to_c.dot(ray_d)
+		if proj < 0.0:
+			continue
+		var perp_sq := to_c.length_squared() - proj * proj
+		if perp_sq < 0.0022 and proj < best_t:
+			best_t = proj
+			best_id = rec["id"]
+	return best_id
+
+func _on_viewport_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			if mb.pressed:
+				_orbiting = true
+				_last_mouse = mb.position
+				_press_pos = mb.position
+			else:
+				_orbiting = false
+				if mb.position.distance_to(_press_pos) < 5.0:
+					_select_part(_pick_part_at(mb.position))
+		elif mb.button_index == MOUSE_BUTTON_RIGHT:
+			_panning = mb.pressed
+			_last_mouse = mb.position
+		elif mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
+			_dist = clampf(_dist * 0.88, 0.22, 2.2)
+			_update_camera()
+		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
+			_dist = clampf(_dist * 1.12, 0.22, 2.2)
+			_update_camera()
+	elif event is InputEventMouseMotion:
+		var mm := event as InputEventMouseMotion
+		var delta := mm.position - _last_mouse
+		_last_mouse = mm.position
+		if _orbiting:
+			_yaw -= delta.x * 0.008
+			_pitch = clampf(_pitch - delta.y * 0.008, -1.45, 1.45)
+			_update_camera()
+		elif _panning and _camera != null:
+			var right := _camera.global_transform.basis.x
+			var up := _camera.global_transform.basis.y
+			_target -= (right * delta.x - up * delta.y) * (_dist * 0.0014)
+			_update_camera()
+		else:
+			var hov := _pick_part_at(mm.position)
+			if hov != _hovered_id:
+				_hovered_id = hov
+				_assembly_root.set_selection(_selected_id, _hovered_id, _isolate)
+
+func _on_container_resized() -> void:
+	if _view_3d_container == null or _sub_viewport == null:
+		return
+	var w := maxi(480, int(_view_3d_container.size.x))
+	var h := maxi(360, int(_view_3d_container.size.y))
+	_sub_viewport.size = Vector2i(w, h)
+	if _viewport_rect != null:
+		_viewport_rect.texture = _sub_viewport.get_texture()
+
+func _update_camera() -> void:
+	if _camera == null:
+		return
+	var cp := cos(_pitch)
+	var offset := Vector3(sin(_yaw) * cp, -sin(_pitch), cos(_yaw) * cp) * maxf(0.22, _dist)
+	var cam_pos := _target + offset
+	if cam_pos.distance_squared_to(_target) > 0.00001:
+		_camera.look_at_from_position(cam_pos, _target, Vector3.UP)
+=== FILE: scripts/visualization/internal_architecture/architecture_registry.gd ===
+class_name ArchitectureRegistry
+extends RefCounted
+
+# All 55 components from National VP-5231A 30MHz Dual-Trace Oscilloscope Service Manual
+const PARTS := [
+	{"id": 1, "code": "VP52-FP-001", "name": "Warm-Cream Molded CRT Bezel Frame", "subsystem": "Front Panel & Controls", "material": "Injection-Molded Ivory/Cream ABS (#DFD1B8)", "axis": "+Z Forward (5.0 u)", "spec": "132 × 112 mm Viewing Aperture • Snap-Lock Tabs", "desc": "Signature warm-cream molded CRT bezel framing the 8×10 division screen. Recesses the graticule filter against ambient room glare.", "service": "Inspect rear locking tabs before prying outward; clean with mild detergent.", "base": Vector3(-1.18, 0.24, 1.88), "exp": Vector3(0, 0, 4.95), "pin": Vector3(-0.95, 0.95, 0.15)},
+	{"id": 2, "code": "VP52-FP-002", "name": "National VP-5231A 30MHz Header Nameplate", "subsystem": "Front Panel & Controls", "material": "Anodized Charcoal Aluminum w/ Silkscreen", "axis": "+Z Forward (5.2 u)", "spec": "215 × 26 mm • Model & Bandwidth Badge", "desc": "Top-left dark anodized identification strip bearing the National logo, OSCILLOSCOPE VP-5231A designation, and boxed 30 MHz emblem.", "service": "Secured via two rear speed-nuts behind the upper CRT bezel lip.", "base": Vector3(-1.18, 1.40, 1.86), "exp": Vector3(0, 0.25, 5.15), "pin": Vector3(-0.85, 0.28, 0.1)},
+	{"id": 3, "code": "VP52-FP-003", "name": "Blue-Tinted 8×10 Division Graticule Filter", "subsystem": "CRT & Shielding", "material": "Optical Cyan-Blue Acrylic Filter (8×10 Div)", "axis": "+Z Forward (4.2 u)", "spec": "100 × 80 mm Active Area • 10mm/div Grid", "desc": "High-contrast cyan-blue contrast filter engraved with an 8×10 division internal graticule and 0.2-division center axis subdivisions.", "service": "Edge-lit by twin incandescent scale illumination lamps; avoid alcohol wipes.", "base": Vector3(-1.18, 0.24, 1.81), "exp": Vector3(0, 0, 4.15), "pin": Vector3(0.0, 0.75, 0.1)},
+	{"id": 4, "code": "VP52-FP-004", "name": "Brushed Silver-Grey Front Panel Escutcheon", "subsystem": "Front Panel & Controls", "material": "2.0mm Brushed Aluminum Alloy w/ Silkscreen", "axis": "+Z Forward (2.8 u)", "spec": "310 × 205 mm • Silkscreened Legends", "desc": "Primary front fascia plate finished in brushed silver-grey anodized aluminum with olive-grey functional groupings for Trigger, Timebase, CH1/CH2, and CRT controls.", "service": "Remove all 12 front control knobs and BNC hex nuts before sliding panel forward.", "base": Vector3(0, 0, 1.76), "exp": Vector3(0, 0, 2.85), "pin": Vector3(-2.25, 1.35, 0.1)},
+	{"id": 5, "code": "VP52-SW-005", "name": "Mains Power Push-Button & Amber Pilot Lamp", "subsystem": "Front Panel & Controls", "material": "DPDT Latching Switch + Neon Indicator", "axis": "+Z Forward (3.8 u)", "spec": "250V AC / 3A Rated • High-Visibility Amber Lens", "desc": "Bottom-left latching mains power switch paired with an amber neon pilot indicator that illuminates when AC line voltage is applied.", "service": "Check 100kΩ series limiting resistor on neon pilot if lamp flickers.", "base": Vector3(-2.12, -1.26, 1.84), "exp": Vector3(-0.25, -0.2, 3.85), "pin": Vector3(-0.35, -0.35, 0.1)},
+	{"id": 6, "code": "VP52-TM-006", "name": "CAL 0.5V Square-Wave Calibration Post", "subsystem": "Front Panel & Controls", "material": "Nickel-Plated Brass Hook Lug", "axis": "+Z Forward (3.8 u)", "spec": "0.5V p-p ±2% • 1 kHz Square Wave", "desc": "Front-panel calibration reference hook outputting a precision 0.5V peak-to-peak 1 kHz square wave for compensating 10:1 passive probes.", "service": "Verify 0.50V p-p amplitude with VR501 trimmer on main timebase PCB.", "base": Vector3(-1.82, -1.26, 1.84), "exp": Vector3(-0.15, -0.2, 3.85), "pin": Vector3(-0.15, -0.38, 0.1)},
+	{"id": 7, "code": "VP52-KN-007", "name": "CRT Intensity, Focus & Scale Illum Control Trio", "subsystem": "Front Panel & Controls", "material": "Fluted Charcoal ABS Knobs w/ Aluminum Inserts", "axis": "+Z Forward (4.3 u)", "spec": "3× 6mm D-Shaft Potentiometer Knobs", "desc": "Three matched fluted charcoal knobs controlling CRT beam current (INTENSITY), electrostatic focus voltage (FOCUS), and graticule lamp brightness (SCALE ILLUM).", "service": "Loosen 1.5mm set-screws before pulling knobs; align Trace Rotation horizontally.", "base": Vector3(-1.05, -1.28, 1.88), "exp": Vector3(0, -0.25, 4.35), "pin": Vector3(0, -0.42, 0.15)},
+	{"id": 8, "code": "VP52-TM-008", "name": "Chassis Earth / Ground Binding Post", "subsystem": "Front Panel & Controls", "material": "Knurled Black Phenolic & Brass Stud", "axis": "+Z Forward (3.9 u)", "spec": "4mm Banana Jack / Spade Lug Post", "desc": "Direct chassis ground reference terminal allowing low-inductance ground leads when probing high-frequency signals.", "service": "Ensure star-washer maintains <0.05Ω continuity to main aluminum frame.", "base": Vector3(-0.26, -1.28, 1.86), "exp": Vector3(0.1, -0.2, 3.95), "pin": Vector3(0.15, -0.38, 0.1)},
+	{"id": 9, "code": "VP52-KN-009", "name": "Trigger SLOPE / LEVEL Dual Control Knob", "subsystem": "Front Panel & Controls", "material": "Fluted Charcoal Knob w/ Pull-Slope Switch", "axis": "+Z Forward (4.5 u)", "spec": "10kΩ Linear Potentiometer + Pull Switch", "desc": "Adjusts the trigger comparator voltage threshold (LEVEL) and toggles positive/negative edge triggering (SLOPE).", "service": "Verify smooth pull-detent action without binding against panel bushing.", "base": Vector3(0.15, 1.05, 1.88), "exp": Vector3(0.15, 0.25, 4.45), "pin": Vector3(-0.25, 0.32, 0.15)},
+	{"id": 10, "code": "VP52-SW-010", "name": "Trigger Coupling, Source & Mode Slide Switches", "subsystem": "Front Panel & Controls", "material": "Molded Cream Slide Actuators (#DAD2C0)", "axis": "+Z Forward (3.9 u)", "spec": "AC/TV-V/TV-H/DC • INT/LINE/EXT • AUTO/NORM", "desc": "Three vertical multi-position slide switches configuring trigger coupling (including TV frame/line sync), source selection, and Auto/Normal sweep.", "service": "Clean silver-plated slide contacts with DeoxIT D5 if erratic triggering occurs.", "base": Vector3(0.92, 1.05, 1.84), "exp": Vector3(0.25, 0.25, 3.95), "pin": Vector3(0, 0.38, 0.1)},
+	{"id": 11, "code": "VP52-KN-011", "name": "Horizontal POSITION (Pull ×10) & Sweep Mode", "subsystem": "Front Panel & Controls", "material": "Charcoal Fluted Knob + Cream Slide Switch", "axis": "+Z Forward (4.4 u)", "spec": "×10 Sweep Magnifier Pull-Switch", "desc": "Controls horizontal X-axis trace deflection and engages the ×10 sweep magnifier when pulled outward.", "service": "Calibrate ×10 horizontal gain trimmer VR304 whenever knob shaft is serviced.", "base": Vector3(0.38, 0.35, 1.88), "exp": Vector3(0.15, 0.1, 4.35), "pin": Vector3(-0.25, 0.28, 0.15)},
+	{"id": 12, "code": "VP52-KN-012", "name": "Sweep Timebase VARIABLE Fine Vernier Knob", "subsystem": "Front Panel & Controls", "material": "Warm-Beige Fluted ABS Knob (#C8B99C)", "axis": "+Z Forward (4.4 u)", "spec": "Continuous 2.5:1 Sweep Rate Vernier w/ CAL Detent", "desc": "Distinctive warm-beige fluted vernier knob providing continuous sweep speed adjustment between main TIME/DIV steps.", "service": "Ensure positive detent click at full CW position so sweep calibration remains accurate.", "base": Vector3(1.18, 0.33, 1.88), "exp": Vector3(0.35, 0.1, 4.35), "pin": Vector3(0, 0.32, 0.15)},
+	{"id": 13, "code": "VP52-KN-013", "name": "TIME/DIV Main Rotary Timebase Knob", "subsystem": "Front Panel & Controls", "material": "Large Skirted Charcoal Knob w/ Index Pointer", "axis": "+Z Forward (4.7 u)", "spec": "18-Position Rotary Switch (0.2µs/div to 0.5s/div)", "desc": "Large primary timebase selector knob featuring a flared calibrated skirt spanning 18 calibrated sweep speeds from 0.2 µs/div to 0.5 s/div.", "service": "Align pointer arrow directly onto 1 ms/div index mark during reassembly.", "base": Vector3(2.04, 0.96, 1.90), "exp": Vector3(0.55, 0.25, 4.65), "pin": Vector3(0.35, 0.38, 0.15)},
+	{"id": 14, "code": "VP52-CN-014", "name": "EXT TRIG INPUT Coaxial BNC Jack", "subsystem": "Front Panel & Controls", "material": "Nickel-Plated Brass w/ PTFE Dielectric", "axis": "+Z Forward (3.7 u)", "spec": "1MΩ // 25pF Input Impedance • 300V Max", "desc": "External trigger input BNC receptacle permitting synchronization of the horizontal sweep to an external clock or pulse.", "service": "Check center pin tension and 1MΩ input series resistor R401.", "base": Vector3(2.04, 0.32, 1.80), "exp": Vector3(0.55, 0.08, 3.75), "pin": Vector3(0.35, -0.25, 0.1)},
+	{"id": 15, "code": "VP52-KN-015", "name": "CH 1 Vertical POSITION & VARIABLE Knobs", "subsystem": "Front Panel & Controls", "material": "Charcoal Position + Warm-Beige Vernier Knobs", "axis": "+Z Forward (4.4 u)", "spec": "CH1 DC Offset + 2.5:1 Gain Vernier", "desc": "Channel 1 vertical trace position control (charcoal) paired with the warm-beige continuous vertical gain vernier knob.", "service": "Verify full CW CAL detent on beige vernier knob before calibrating 5mV–5V/div steps.", "base": Vector3(0.46, -0.32, 1.88), "exp": Vector3(0.15, -0.08, 4.35), "pin": Vector3(-0.25, 0.28, 0.15)},
+	{"id": 16, "code": "VP52-KN-016", "name": "CH 1 VOLTS/DIV Calibrated Attenuator Knob", "subsystem": "Front Panel & Controls", "material": "Skirted Charcoal Knob (5mV–5V/div)", "axis": "+Z Forward (4.7 u)", "spec": "10-Step 1-2-5 Sequence (5mV/div to 5V/div)", "desc": "Channel 1 precision vertical sensitivity selector controlling the frequency-compensated resistive-capacitive input attenuator.", "service": "Tighten dual brass set-screws onto flat of attenuator shaft.", "base": Vector3(0.46, -0.86, 1.90), "exp": Vector3(0.15, -0.2, 4.65), "pin": Vector3(-0.25, -0.35, 0.15)},
+	{"id": 17, "code": "VP52-CN-017", "name": "CH 1 INPUT BNC Jack & AC-GND-DC Switch", "subsystem": "Front Panel & Controls", "material": "Panel BNC Connector + 3-Pos Slide Switch", "axis": "+Z Forward (3.8 u)", "spec": "1MΩ // 25pF • 400V (DC + AC peak) Max", "desc": "Channel 1 vertical signal input connector and 3-position input coupling switch (AC capacitive block, GND baseline reference, DC direct coupled).", "service": "Inspect 0.047µF/630V DC-blocking capacitor C101 if AC coupling leaks DC.", "base": Vector3(0.46, -1.34, 1.80), "exp": Vector3(0.15, -0.35, 3.75), "pin": Vector3(0, -0.38, 0.1)},
+	{"id": 18, "code": "VP52-SW-018", "name": "Vertical Display Mode 5-Position Slider", "subsystem": "Front Panel & Controls", "material": "Long-Throw Cream Paddle Actuator", "axis": "+Z Forward (4.1 u)", "spec": "CH1 • CH2(X-Y) • CHOP (250kHz) • ALT • ADD", "desc": "Distinctive long-throw vertical mode selector switch positioned between CH1 and CH2, selecting CH1, CH2(X-Y), CHOP, ALT, or ADD.", "service": "Slide actuator engages internal 5-detent leaf switch on vertical preamp board.", "base": Vector3(1.13, -0.62, 1.85), "exp": Vector3(0.32, -0.15, 4.15), "pin": Vector3(0, 0.58, 0.15)},
+	{"id": 19, "code": "VP52-KN-019", "name": "CH 2 VARIABLE & POSITION (Pull INV) Knobs", "subsystem": "Front Panel & Controls", "material": "Warm-Beige Vernier + Charcoal Pull-Invert Knob", "axis": "+Z Forward (4.4 u)", "spec": "CH2 Gain Vernier + Differential Polarity Invert", "desc": "Channel 2 warm-beige gain vernier knob paired with the charcoal vertical position knob featuring a pull-switch to invert CH2 polarity.", "service": "Check CH2 invert balance trimmer VR205 so trace does not shift when pulled.", "base": Vector3(1.78, -0.32, 1.88), "exp": Vector3(0.48, -0.08, 4.35), "pin": Vector3(0.25, 0.28, 0.15)},
+	{"id": 20, "code": "VP52-KN-020", "name": "CH 2 VOLTS/DIV Calibrated Attenuator Knob", "subsystem": "Front Panel & Controls", "material": "Skirted Charcoal Knob (5mV–5V/div)", "axis": "+Z Forward (4.7 u)", "spec": "10-Step 1-2-5 Sequence (5mV/div to 5V/div)", "desc": "Channel 2 precision vertical attenuator selector matching Channel 1 sensitivity steps from 5 mV/div to 5 V/div.", "service": "Match step attenuation accuracy within ±3% against CH1.", "base": Vector3(1.78, -0.86, 1.90), "exp": Vector3(0.48, -0.2, 4.65), "pin": Vector3(0.25, -0.35, 0.15)},
+	{"id": 21, "code": "VP52-CN-021", "name": "CH 2 INPUT BNC Jack & AC-GND-DC Switch", "subsystem": "Front Panel & Controls", "material": "Panel BNC Connector + 3-Pos Slide Switch", "axis": "+Z Forward (3.8 u)", "spec": "1MΩ // 25pF • 400V (DC + AC peak) Max", "desc": "Channel 2 vertical signal input BNC connector (also serves as X-axis horizontal input in X-Y mode) and AC-GND-DC coupling switch.", "service": "Verify clean ground return ring contact on panel opening.", "base": Vector3(1.78, -1.34, 1.80), "exp": Vector3(0.48, -0.35, 3.75), "pin": Vector3(0.15, -0.38, 0.1)},
+	{"id": 22, "code": "VP52-CR-022", "name": "Edge-Lit Graticule Illumination Lamp Bar", "subsystem": "CRT & Shielding", "material": "Aluminum Light-Guide + Twin 6.3V Pilot Lamps", "axis": "+Z Forward (2.1 u)", "spec": "2× 6.3V / 150mA Sub-Miniature Axial Lamps", "desc": "Top-mounted light-pipe carrier holding two 6.3V incandescent lamps that edge-illuminate the engraved 8×10 graticule lines.", "service": "Replace lamps in matched pairs for uniform graticule illumination.", "base": Vector3(-1.18, 1.12, 1.66), "exp": Vector3(-0.35, 0.65, 2.15), "pin": Vector3(-0.35, 0.3, 0)},
+	{"id": 23, "code": "VP52-CR-023", "name": "Neoprene CRT Faceplate Shock Gasket", "subsystem": "CRT & Shielding", "material": "Closed-Cell EPDM/Neoprene Elastomer", "axis": "+Z Forward (1.6 u)", "spec": "130 × 108 mm Rectangular Ring Gasket", "desc": "Shock-absorbing elastomeric cushion seated between the glass CRT faceplate rim and the front chassis bulkhead.", "service": "Ensure gasket seats evenly around all four corners before tightening rear CRT clamp.", "base": Vector3(-1.18, 0.24, 1.56), "exp": Vector3(-0.45, 0.15, 1.65), "pin": Vector3(-0.85, 0.65, 0)},
+	{"id": 24, "code": "VP52-CR-024", "name": "130BHB31 Rectangular Electrostatic CRT (P31)", "subsystem": "CRT & Shielding", "material": "Borosilicate Vacuum Envelope + P31 Phosphor", "axis": "-X / +Z (1.2 u)", "spec": "5-Inch Rectangular • 2kV Post-Deflection Accel", "desc": "High-brightness 5-inch rectangular cathode-ray tube with internal P31 green phosphor, electrostatic deflection plates, and PDA anode button.", "service": "DANGER: Discharge 2kV PDA side-button to chassis ground before handling CRT glass.", "base": Vector3(-1.18, 0.24, 0.15), "exp": Vector3(-1.35, 0.45, 1.15), "pin": Vector3(-0.65, 0.95, 0)},
+	{"id": 25, "code": "VP52-CR-025", "name": "Permalloy Mu-Metal CRT Magnetic Shield", "subsystem": "CRT & Shielding", "material": "0.8mm Hydrogen-Annealed Nickel-Iron Alloy", "axis": "-X Lateral (-2.5 u)", "spec": "78% Ni-Fe High-Permeability Magnetic Shield", "desc": "Tapered rectangular-to-round magnetic shield enclosing the CRT funnel and electron gun neck to prevent 50/60Hz transformer stray fields.", "service": "Do not drop or bend shield; mechanical shock degrades magnetic permeability.", "base": Vector3(-1.18, 0.24, 0.12), "exp": Vector3(-2.65, -0.35, 0.15), "pin": Vector3(-0.85, -0.75, 0)},
+	{"id": 26, "code": "VP52-CR-026", "name": "CRT Trace Rotation Electromagnetic Coil", "subsystem": "CRT & Shielding", "material": "Enameled Copper Winding on Nylon Bobbin", "axis": "-X Lateral (-2.2 u)", "spec": "180 Turns • ±5° Geometric Trace Alignment", "desc": "Solenoid coil slipped over the CRT neck generating an axial magnetic field to align the trace horizontally.", "service": "Driven by front-panel TRACE ROTATION trimmer R512.", "base": Vector3(-1.18, 0.24, -0.45), "exp": Vector3(-2.15, 0.75, -0.35), "pin": Vector3(-0.4, 0.45, 0)},
+	{"id": 27, "code": "VP52-CR-027", "name": "14-Pin B14G CRT Base Socket & Clamp Ring", "subsystem": "CRT & Shielding", "material": "Molded Phenolic Socket + Neoprene Clamp", "axis": "-Z Rear (-1.8 u)", "spec": "14-Pin B14G High-Voltage CRT Base", "desc": "Rear CRT neck support clamp and 14-pin socket delivering heater (6.3V), cathode, grid G1, focus, and astigmatism potentials.", "service": "Verify 6.3V AC CRT heater continuity across pins 1 and 14.", "base": Vector3(-1.18, 0.24, -1.52), "exp": Vector3(-1.35, 0.25, -1.85), "pin": Vector3(-0.45, -0.35, 0)},
+	{"id": 28, "code": "VP52-AT-028", "name": "CH1 & CH2 Precision Rotary Attenuator Modules", "subsystem": "Vertical & Timebase PCBs", "material": "Ceramic Switch Wafers + Tin-Plated Shield Box", "axis": "+X Lateral (+1.9 u)", "spec": "10-Step Frequency-Compensated 1MΩ Attenuators", "desc": "Dual shielded multi-wafer rotary attenuator switches behind the CH1 and CH2 VOLTS/DIV knobs with precision 1% dividers and trimmer capacitors.", "service": "Adjust trimmer capacitors C104–C112 using a fast-rise 1kHz square wave.", "base": Vector3(1.12, -0.86, 1.15), "exp": Vector3(1.95, -0.35, 1.15), "pin": Vector3(0.55, 0.35, 0)},
+	{"id": 29, "code": "VP52-TB-029", "name": "TIME/DIV 18-Position Timing Capacitor Cam Switch", "subsystem": "Vertical & Timebase PCBs", "material": "Brass Detent Frame + Polypropylene Timing Caps", "axis": "+X / +Y (+2.2 u)", "spec": "18-Step RC Sweep Generator Selector", "desc": "Precision rotary cam switch bank switching matched polypropylene and silver-mica timing capacitors for the Miller sweep generator.", "service": "Lubricate index ball detent lightly with lithium grease.", "base": Vector3(1.96, 0.96, 1.12), "exp": Vector3(2.25, 0.65, 1.15), "pin": Vector3(0.45, 0.4, 0)},
+	{"id": 30, "code": "VP52-PC-030", "name": "Dual Vertical Preamp & Switching PCB (PN-102B)", "subsystem": "Vertical & Timebase PCBs", "material": "1.6mm FR-4 Epoxy Glass PCB + FET Input Stages", "axis": "+X Lateral (+2.6 u)", "spec": "DC–30MHz (-3dB) • 11.7ns Rise Time • Dual FET", "desc": "Right-side vertical amplifier PCB housing low-noise matched JFET source followers, cascode gain stages, 250kHz chopper, and vertical output driver.", "service": "Check DC balance trimmers VR102 (CH1) and VR202 (CH2) after warm-up.", "base": Vector3(1.35, -0.35, -0.05), "exp": Vector3(2.65, -0.15, 0.1), "pin": Vector3(0.65, 0.75, 0)},
+	{"id": 31, "code": "VP52-DL-031", "name": "160ns Coaxial Vertical Signal Delay Line", "subsystem": "Vertical & Timebase PCBs", "material": "Helical Coaxial Transmission Line on ABS Former", "axis": "+X / +Y (+2.4 u)", "spec": "160 ns Propagation Delay • 150Ω Characteristic Z", "desc": "Wound coaxial delay cable delaying the vertical deflection signal by 160ns relative to trigger pickoff so fast pulse leading edges are visible.", "service": "Ensure termination network R245/C245 is intact to prevent ringing.", "base": Vector3(0.95, 0.85, -0.45), "exp": Vector3(2.35, 0.85, -0.35), "pin": Vector3(0.35, 0.45, 0)},
+	{"id": 32, "code": "VP52-PC-032", "name": "Main Horizontal Sweep & Trigger PCB (PN-104A)", "subsystem": "Vertical & Timebase PCBs", "material": "1.6mm FR-4 Green Solder-Mask PCB", "axis": "+Y Upward (+2.1 u)", "spec": "0.2µs/div–0.5s/div • Trigger Bandwidth >35MHz", "desc": "Upper horizontal circuit board containing the Schmitt trigger comparator, TV sync separator, sweep ramp generator, and push-pull X-deflection amplifier.", "service": "Check +12V and -12V test points TP1/TP2 before adjusting sweep timing VR301.", "base": Vector3(0.15, 1.18, -0.15), "exp": Vector3(0.25, 2.15, 0.1), "pin": Vector3(0, 0.45, 0)},
+	{"id": 33, "code": "VP52-HS-033", "name": "X-Deflection Output Transistor Heatsink", "subsystem": "Vertical & Timebase PCBs", "material": "Extruded Black-Anodized Aluminum Fin Bar", "axis": "+Y Upward (+2.6 u)", "spec": "140V Push-Pull Deflection Driver Cooling", "desc": "Extruded aluminum heatsink bar thermally bonded to the TO-220 horizontal deflection output transistors driving the CRT X-plates.", "service": "Verify mica insulator washers and thermal compound on Q318/Q319.", "base": Vector3(-0.25, 1.38, -0.75), "exp": Vector3(-0.35, 2.65, -0.45), "pin": Vector3(-0.35, 0.3, 0)},
+	{"id": 34, "code": "VP52-PS-034", "name": "Shielded EI-Core Mains Power Transformer", "subsystem": "Power & HV Supply", "material": "Silicon-Steel Laminations + Copper Bell Shield", "axis": "-Z Rear (-2.3 u)", "spec": "100/115/220/240V Primary • Multiple LV & CRT Windings", "desc": "Heavy-duty laminated silicon-steel power transformer with copper flux-band shielding, supplying isolated CRT heater, ±12V, +140V, and HV rails.", "service": "Verify primary tap wiring matches local AC line voltage before powering on.", "base": Vector3(-1.15, -0.68, -0.82), "exp": Vector3(-1.25, -0.45, -2.25), "pin": Vector3(-0.65, 0.65, 0)},
+	{"id": 35, "code": "VP52-PS-035", "name": "Main Power Supply Filter Capacitor Bank", "subsystem": "Power & HV Supply", "material": "Aluminum Electrolytic Capacitors (85°C)", "axis": "-Y Downward (-1.9 u)", "spec": "2× 2200µF/35V + 2× 47µF/250V", "desc": "Primary smoothing reservoir capacitors for the regulated ±12V analog rails and +140V deflection supply rails.", "service": "Check ripple voltage (<5mV p-p); replace if ESR exceeds 0.5Ω.", "base": Vector3(0.15, -0.82, -0.65), "exp": Vector3(0.15, -1.85, -0.65), "pin": Vector3(0, -0.55, 0)},
+	{"id": 36, "code": "VP52-PC-036", "name": "Regulated Power Supply & Z-Axis PCB (PN-108C)", "subsystem": "Power & HV Supply", "material": "1.6mm Phenolic/FR-4 PCB + Series Regulators", "axis": "-Y Downward (-2.3 u)", "spec": "+12V, -12V, +5V, +140V Regulated Rails", "desc": "Bottom-mounted power regulator board containing bridge rectifiers, zener reference diodes, series pass transistors, and Z-axis blanking amplifier.", "service": "Adjust +12.00V precision reference potentiometer VR601 first during calibration.", "base": Vector3(0.35, -1.25, -0.15), "exp": Vector3(0.35, -2.35, -0.15), "pin": Vector3(0.45, -0.45, 0)},
+	{"id": 37, "code": "VP52-HV-037", "name": "-1.5kV Cathode & +2kV PDA High-Voltage PCB", "subsystem": "Power & HV Supply", "material": "High-Isolation Epoxy PCB + Ferrite Flyback", "axis": "-X / -Y (-2.1 u)", "spec": "35kHz Oscillator • -1500V Cathode / +2000V PDA", "desc": "High-frequency switching inverter and Cockcroft-Walton voltage multiplier generating the -1.5kV CRT cathode and +2kV PDA supplies.", "service": "Measure -1500V only with a calibrated 1000:1 high-voltage probe.", "base": Vector3(-1.15, -1.18, 0.45), "exp": Vector3(-1.85, -2.15, 0.45), "pin": Vector3(-0.55, -0.45, 0)},
+	{"id": 38, "code": "VP52-HV-038", "name": "High-Voltage Converter Aluminum Safety Shield", "subsystem": "Power & HV Supply", "material": "0.8mm Perforated Tin-Plated Steel", "axis": "-X / -Y (-2.7 u)", "spec": "EMI Containment & Operator Shock Guard", "desc": "Protective metallic enclosure completely shielding the 35kHz high-voltage oscillator and multiplier stack from accidental contact.", "service": "Always reinstall all 4 grounding screws after HV service.", "base": Vector3(-1.15, -0.95, 0.45), "exp": Vector3(-2.45, -2.65, 0.45), "pin": Vector3(-0.65, -0.35, 0)},
+	{"id": 39, "code": "VP52-CH-039", "name": "Main Brushed Aluminum Structural Sub-Chassis", "subsystem": "Chassis & Rear Enclosure", "material": "1.5mm Stamped & Riveted Aluminum Alloy", "axis": "Fixed Core Reference (0.0 u)", "spec": "305 × 198 × 365 mm Structural Frame", "desc": "Central load-bearing aluminum chassis assembly consisting of the front control bulkhead, longitudinal center partition wall, and bottom deck.", "service": "Primary star-ground reference plane for all oscilloscope analog circuits.", "base": Vector3(0, 0, 0.05), "exp": Vector3(0, 0, 0), "pin": Vector3(0.1, 1.55, 0.9)},
+	{"id": 40, "code": "VP52-EN-040", "name": "U-Shaped Ventilated Steel Cabinet Enclosure", "subsystem": "Chassis & Rear Enclosure", "material": "1.0mm Textured Warm-Grey Enamel Steel", "axis": "+Y Upward (+3.3 u)", "spec": "Slotted Top & Side Convection Cooling Louvers", "desc": "One-piece U-shaped outer steel cabinet finished in warm-grey textured enamel with stamped cooling louver arrays along top and side walls.", "service": "Remove 4 rear bezel screws and 4 bottom foot screws to slide cabinet rearward.", "base": Vector3(0, 0.06, -0.02), "exp": Vector3(0, 3.35, -0.35), "pin": Vector3(0, 1.85, -0.5)},
+	{"id": 41, "code": "VP52-EN-041", "name": "Die-Cast Tilt-Stand Carrying Handle Assembly", "subsystem": "Chassis & Rear Enclosure", "material": "Extruded Aluminum Bar + Ratchet Pivot Hubs", "axis": "+Y Upward (+4.2 u)", "spec": "12-Position Locking Tilt & Carry Bail", "desc": "Heavy-duty side-pivoting carrying handle with push-button locking ratchet hubs that doubles as a multi-angle benchtop viewing tilt stand.", "service": "Press both side pivot buttons simultaneously before rotating handle.", "base": Vector3(0, 0.45, 0.65), "exp": Vector3(0, 4.25, 0.45), "pin": Vector3(-2.2, 1.55, 0)},
+	{"id": 42, "code": "VP52-EN-042", "name": "Bottom Service Cover & Anti-Skid Rubber Feet", "subsystem": "Chassis & Rear Enclosure", "material": "0.8mm Steel Plate + 4× Molded Santoprene Feet", "axis": "-Y Downward (-3.1 u)", "spec": "Removable Bottom Calibration Access Panel", "desc": "Bottom closure panel with 4 elastomer feet providing benchtop stability and quick access to the regulated power supply solder side.", "service": "Check rear cord-wrap feet integrity when storing instrument vertically.", "base": Vector3(0, -1.62, -0.02), "exp": Vector3(0, -3.15, 0), "pin": Vector3(0, -0.45, 0.8)},
+	{"id": 43, "code": "VP52-RP-043", "name": "Rear Chassis Panel & Specification Plate", "subsystem": "Chassis & Rear Enclosure", "material": "1.5mm Dark-Grey Painted Steel w/ Silkscreen", "axis": "-Z Rear (-2.9 u)", "spec": "305 × 198 mm • AC Ratings & Rear I/O Legends", "desc": "Rear structural closure panel housing the IEC mains inlet, line voltage selector, fuse holder, Z-axis input, and rear signal outputs.", "service": "Verify earth ground lug continuity (<0.1Ω) between IEC ground pin and rear panel.", "base": Vector3(0, 0, -1.68), "exp": Vector3(0, 0, -2.95), "pin": Vector3(1.85, 1.35, -0.1)},
+	{"id": 44, "code": "VP52-RP-044", "name": "IEC 320-C14 3-Prong AC Power Receptacle", "subsystem": "Power & HV Supply", "material": "Flame-Retardant PBT + Brass Blades", "axis": "-Z Rear (-3.7 u)", "spec": "250V AC / 6A Safety-Approved Mains Inlet", "desc": "Standard 3-conductor grounded IEC power inlet receptacle with integrated EMI line filter capacitor network.", "service": "Inspect X2/Y2 line filter capacitors across inlet pins for age cracking.", "base": Vector3(-1.65, -0.85, -1.74), "exp": Vector3(-0.35, -0.25, -3.75), "pin": Vector3(-0.35, -0.35, -0.1)},
+	{"id": 45, "code": "VP52-RP-045", "name": "100–240V Line Selector Plug & 1A Fuse Holder", "subsystem": "Power & HV Supply", "material": "Bakelite Fuse Cap + Rotary Voltage Drum", "axis": "-Z Rear (-3.8 u)", "spec": "100V / 115V / 220V / 240V • 5×20mm 1A Fuse", "desc": "Rear-panel multi-voltage selector drum and bayonet-cap glass cartridge fuse holder protecting the primary transformer winding.", "service": "Use 1A slow-blow fuse for 100/115V operation or 0.5A for 220/240V operation.", "base": Vector3(-0.82, -0.85, -1.74), "exp": Vector3(-0.15, -0.25, -3.85), "pin": Vector3(0, -0.38, -0.1)},
+	{"id": 46, "code": "VP52-RP-046", "name": "Rear Auxiliary BNC Outputs (Z-Axis, CH1, Gate)", "subsystem": "Chassis & Rear Enclosure", "material": "3× Nickel-Plated Panel BNC Jacks", "axis": "-Z Rear (-3.7 u)", "spec": "Z-Axis Mod • CH1 Out (50mV/div) • Sweep Gate", "desc": "Three rear-panel auxiliary BNC connectors providing external CRT intensity modulation (Z-axis), buffered CH1 output, and positive sweep gate.", "service": "Z-axis input requires +5V TTL/analog pulse to blank trace.", "base": Vector3(1.45, -0.15, -1.74), "exp": Vector3(0.35, 0, -3.75), "pin": Vector3(0.45, 0.45, -0.1)},
+	{"id": 47, "code": "VP52-RP-047", "name": "Rear Molded Cord-Wrap Bumper Stand-Offs (4×)", "subsystem": "Chassis & Rear Enclosure", "material": "High-Impact Black Nylon / Santoprene", "axis": "-Z Rear (-3.9 u)", "spec": "4× Corner Bumpers w/ Integrated Cord Cleats", "desc": "Four rear corner bumpers protecting rear BNC connectors from impact when standing the oscilloscope upright and providing cord-wrap cleats.", "service": "Secured via M4 machine screws into rear chassis corner bosses.", "base": Vector3(0, 0, -1.78), "exp": Vector3(0, 0, -3.95), "pin": Vector3(2.25, -1.35, -0.1)},
+	{"id": 48, "code": "VP52-HW-048", "name": "Front Panel Corner Stainless Mounting Screws (4×)", "subsystem": "Front Panel & Controls", "material": "M3×8mm Stainless Steel Pan-Head Screws", "axis": "+Z Forward (5.4 u)", "spec": "4× M3 Phillips Pan-Head w/ Captive Washers", "desc": "Four corner fasteners securing the front panel escutcheon and outer bezel rim to the internal aluminum sub-chassis.", "service": "Visible in the four outer corners of the National VP-5231A front frame.", "base": Vector3(0, 0, 1.82), "exp": Vector3(0, 0, 5.45), "pin": Vector3(2.42, 1.55, 0.1)},
+	{"id": 49, "code": "VP52-CB-049", "name": "Internal Shielded Coax & Ribbon Wiring Harness", "subsystem": "Vertical & Timebase PCBs", "material": "RG-174/U Mini-Coax + Color-Coded PVC Loom", "axis": "+X / +Y (+1.5 u)", "spec": "50Ω Matched Inter-Board Signal Jumpers", "desc": "Low-capacitance miniature coaxial jumpers and laced wiring harness routing trigger pickoff, CH1/CH2 vertical outputs, and sweep gate pulses.", "service": "Maintain original dress routing away from power transformer and HV cage.", "base": Vector3(0.45, 0.45, 0.55), "exp": Vector3(1.25, 1.15, 0.65), "pin": Vector3(0.35, 0.35, 0)},
+	{"id": 50, "code": "VP52-CR-050", "name": "CRT Vertical & Horizontal Deflection Plate Leads", "subsystem": "CRT & Shielding", "material": "Twisted-Pair PTFE Insulated High-Bandwidth Leads", "axis": "-X / +Y (-1.2 u)", "spec": "Balanced Differential Push-Pull Plate Drive", "desc": "Low-inductance twisted differential leads connecting the vertical and horizontal output amplifiers directly to the CRT neck deflection pins.", "service": "Keep lead lengths equal and symmetrical to preserve 30MHz pulse fidelity.", "base": Vector3(-0.55, 0.45, -0.15), "exp": Vector3(-1.15, 1.15, -0.15), "pin": Vector3(-0.35, 0.35, 0)},
+	{"id": 51, "code": "VP52-HW-051", "name": "Threaded Brass Hex PCB Standoff Pillars (8×)", "subsystem": "Chassis & Rear Enclosure", "material": "Nickel-Plated Free-Machining Brass (M3)", "axis": "+Y Upward (+1.3 u)", "spec": "M3 × 12mm Hex Pillars w/ Lock Washers", "desc": "Precision machined brass hex standoffs isolating the main timebase and power supply circuit boards from the aluminum chassis deck.", "service": "Ensure star-lock washers bite cleanly at designated PCB ground bosses.", "base": Vector3(0.35, 0.95, -0.15), "exp": Vector3(0.25, 1.35, -0.15), "pin": Vector3(0.45, 0.25, 0)},
+	{"id": 52, "code": "VP52-CH-052", "name": "Front Panel Potentiometer & Switch Sub-Frame", "subsystem": "Front Panel & Controls", "material": "1.2mm Zinc-Plated Cold-Rolled Steel", "axis": "+Z Forward (1.6 u)", "spec": "Sub-Panel Control Mounting Carrier", "desc": "Secondary internal steel sub-frame carrying the front-panel rotary potentiometers and slide switches so the outer fascia can be removed.", "service": "Provides mechanical rigidity for front-panel switches and vernier pots.", "base": Vector3(1.18, 0.05, 1.38), "exp": Vector3(0.45, 0, 1.65), "pin": Vector3(0.65, 1.15, 0)},
+	{"id": 53, "code": "VP52-CR-053", "name": "CRT Astigmatism & Geometry Calibration Bank", "subsystem": "CRT & Shielding", "material": "Cermet Multi-Turn Trimmer Potentiometers", "axis": "-X Lateral (-1.8 u)", "spec": "ASTIG • GEOM • Y-ALIGN • HF-COMP", "desc": "Bank of internal cermet calibration trimmers governing electron beam roundness (Astigmatism), geometry, and vertical step peaking.", "service": "Adjust Astigmatism in conjunction with front-panel FOCUS control.", "base": Vector3(-0.45, 0.75, 0.75), "exp": Vector3(-1.75, 0.85, 0.75), "pin": Vector3(-0.35, 0.35, 0)},
+	{"id": 54, "code": "VP52-HV-054", "name": "Encapsulated HV Multiplier & Bleeder Resistor", "subsystem": "Power & HV Supply", "material": "Epoxy-Potted High-Voltage Diode Stack", "axis": "-Y Downward (-2.5 u)", "spec": "4kV PIV Fast-Recovery Rectifiers + 10MΩ Bleeder", "desc": "Epoxy-encapsulated high-voltage rectifier stack and precision high-ohmic divider network supplying regulated focus and cathode bias voltages.", "service": "High-ohmic divider resistors can drift high with age, causing loss of focus range.", "base": Vector3(-1.45, -1.05, 0.15), "exp": Vector3(-2.15, -2.45, 0.15), "pin": Vector3(-0.45, -0.35, 0)},
+	{"id": 55, "code": "VP52-RP-055", "name": "Rear Chassis Ventilation & Cooling Fan Exhaust Plate", "subsystem": "Chassis & Rear Enclosure", "material": "Stamped Steel Louvered Cover + Axial Fan", "axis": "-Z Rear (-3.4 u)", "spec": "Rear Exhaust Vent & Forced-Air Cooling", "desc": "Removable louvered cover plate on the rear bulkhead allowing convective heat exhaust from the power transformer and calibration access.", "service": "Keep rear ventilation slots unobstructed by at least 5 cm during operation.", "base": Vector3(0.35, 0.85, -1.72), "exp": Vector3(0.15, 0.25, -3.45), "pin": Vector3(0.35, 0.45, -0.1)}
+]
+
+static func get_part(id: int) -> Dictionary:
+	for p in PARTS:
+		if p["id"] == id:
+			return p
+	return PARTS[0]

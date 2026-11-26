@@ -3,14 +3,23 @@ extends Node3D
 
 var assembly_root: Node3D
 var guide_lines_mi: MeshInstance3D
+var flow_tubes_mi: MeshInstance3D
+var flow_pulse_holder: Node3D
+var crt_beam_mi: MeshInstance3D
+var crt_y_plate_top: MeshInstance3D
+var crt_y_plate_bot: MeshInstance3D
+var crt_x_plate_l: MeshInstance3D
+var crt_x_plate_r: MeshInstance3D
 var floor_grid: Node3D
 var part_records := []
+var _part_map := {}
 var show_guides := true
 var blueprint_mode := true
 var explode_factor := 0.72
 var selected_part_id := -1
 var hovered_part_id := -1
 var isolate_selected := false
+var _flow_phase := 0.0
 
 func _ready() -> void:
 	name = "InternalAssemblyRoot"
@@ -21,18 +30,218 @@ func _ready() -> void:
 	add_child(assembly_root)
 
 	part_records = SubsystemBuilder.build_all_55_parts(assembly_root)
+	for rec in part_records:
+		_part_map[int(rec["id"])] = rec
+
+	_setup_crt_physics_internals()
 
 	guide_lines_mi = MeshInstance3D.new()
 	guide_lines_mi.name = "AssemblyAxisGuideLines"
 	var gm := StandardMaterial3D.new()
 	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	gm.albedo_color = Color(0.01, 0.52, 0.78, 0.65)
+	gm.albedo_color = Color(0.01, 0.52, 0.78, 0.55)
 	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	guide_lines_mi.material_override = gm
 	add_child(guide_lines_mi)
 
+	flow_tubes_mi = MeshInstance3D.new()
+	flow_tubes_mi.name = "SignalFlowConduits"
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.vertex_color_use_as_albedo = true
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	flow_tubes_mi.material_override = fm
+	add_child(flow_tubes_mi)
+
+	flow_pulse_holder = Node3D.new()
+	flow_pulse_holder.name = "SignalFlowPulses"
+	add_child(flow_pulse_holder)
+
 	apply_explosion_factor(explode_factor)
 	apply_render_style()
+
+func _setup_crt_physics_internals() -> void:
+	var crt_rec: Dictionary = _part_map.get(24, {})
+	if crt_rec.is_empty():
+		return
+	var crt_node: Node3D = crt_rec["node"]
+	var s := ComponentFactory.CAD_SCALE
+
+	var plate_mat := StandardMaterial3D.new()
+	plate_mat.albedo_color = Color(0.85, 0.62, 0.22, 0.95)
+	plate_mat.metallic = 0.75
+	plate_mat.roughness = 0.25
+	plate_mat.emission_enabled = true
+	plate_mat.emission = Color(1.0, 0.65, 0.12)
+	plate_mat.emission_energy_multiplier = 0.2
+
+	# Internal Y-Deflection Plates (Top & Bottom)
+	crt_y_plate_top = _make_crt_plate(crt_node, "CRT_YPlate_Top", Vector3(0.24, 0.025, 0.32) * s, Vector3(0.0, 0.13, -0.18) * s, plate_mat.duplicate())
+	crt_y_plate_bot = _make_crt_plate(crt_node, "CRT_YPlate_Bot", Vector3(0.24, 0.025, 0.32) * s, Vector3(0.0, -0.13, -0.18) * s, plate_mat.duplicate())
+
+	# Internal X-Deflection Plates (Left & Right)
+	var x_mat := plate_mat.duplicate()
+	x_mat.albedo_color = Color(0.20, 0.82, 0.62, 0.95)
+	x_mat.emission = Color(0.15, 0.95, 0.62)
+	crt_x_plate_l = _make_crt_plate(crt_node, "CRT_XPlate_L", Vector3(0.025, 0.24, 0.32) * s, Vector3(-0.14, 0.0, 0.22) * s, x_mat.duplicate())
+	crt_x_plate_r = _make_crt_plate(crt_node, "CRT_XPlate_R", Vector3(0.025, 0.24, 0.32) * s, Vector3(0.14, 0.0, 0.22) * s, x_mat.duplicate())
+
+	# Dynamic P31 Phosphor Electron Beam inside CRT
+	crt_beam_mi = MeshInstance3D.new()
+	crt_beam_mi.name = "CRTElectronBeam"
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.albedo_color = Color(0.25, 1.0, 0.58, 0.96)
+	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	crt_beam_mi.material_override = bm
+	crt_node.add_child(crt_beam_mi)
+
+func _make_crt_plate(parent: Node3D, p_name: String, sz: Vector3, pos: Vector3, mat: StandardMaterial3D) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.name = p_name
+	var bm := BoxMesh.new()
+	bm.size = sz
+	mi.mesh = bm
+	mi.position = pos
+	mi.material_override = mat
+	parent.add_child(mi)
+	return mi
+
+func step_physics(delta: float, y_norm: float, x_norm: float, power_on: bool, intensity: float) -> void:
+	_flow_phase = fmod(_flow_phase + delta * 1.45, 1.0)
+	_update_crt_beam_and_plates(y_norm, x_norm, power_on, intensity)
+	_rebuild_signal_conduits()
+
+func _update_crt_beam_and_plates(y_norm: float, x_norm: float, power_on: bool, intensity: float) -> void:
+	if crt_beam_mi == null:
+		return
+	crt_beam_mi.visible = power_on
+	var y_mag := clampf(absf(y_norm), 0.0, 1.0) if power_on else 0.0
+	var x_mag := clampf(absf(x_norm), 0.0, 1.0) if power_on else 0.0
+
+	if crt_y_plate_top != null:
+		(crt_y_plate_top.material_override as StandardMaterial3D).emission_energy_multiplier = 0.15 + maxf(0.0, y_norm) * 1.6
+	if crt_y_plate_bot != null:
+		(crt_y_plate_bot.material_override as StandardMaterial3D).emission_energy_multiplier = 0.15 + maxf(0.0, -y_norm) * 1.6
+	if crt_x_plate_l != null:
+		(crt_x_plate_l.material_override as StandardMaterial3D).emission_energy_multiplier = 0.15 + maxf(0.0, -x_norm) * 1.6
+	if crt_x_plate_r != null:
+		(crt_x_plate_r.material_override as StandardMaterial3D).emission_energy_multiplier = 0.15 + maxf(0.0, x_norm) * 1.6
+
+	if not power_on:
+		return
+
+	var s := ComponentFactory.CAD_SCALE
+	var z_gun := -1.15 * s
+	var z_yp := -0.18 * s
+	var z_xp := 0.22 * s
+	var z_scr := 1.32 * s
+	var dy := clampf(y_norm, -1.0, 1.0) * 0.56 * s
+	var dx := clampf(x_norm, -1.0, 1.0) * 0.68 * s
+
+	var pts: Array[Vector3] = []
+	var segs := 24
+	for i in range(segs + 1):
+		var t := float(i) / float(segs)
+		var z := lerpf(z_gun, z_scr, t)
+		var ty := clampf((z - z_yp) / maxf(0.001, z_scr - z_yp), 0.0, 1.0)
+		var tx := clampf((z - z_xp) / maxf(0.001, z_scr - z_xp), 0.0, 1.0)
+		pts.append(Vector3(dx * tx * tx, dy * ty * ty, z))
+
+	var verts := PackedVector3Array()
+	var r := clampf(0.012 + intensity * 0.018, 0.010, 0.032) * s
+	for i in range(segs):
+		var a := pts[i]
+		var b := pts[i + 1]
+		for off in [Vector3.ZERO, Vector3(r, 0, 0), Vector3(-r, 0, 0), Vector3(0, r, 0), Vector3(0, -r, 0)]:
+			verts.append(a + off)
+			verts.append(b + off)
+
+	var am := ArrayMesh.new()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	crt_beam_mi.mesh = am
+
+func _rebuild_signal_conduits() -> void:
+	if flow_tubes_mi == null or flow_pulse_holder == null:
+		return
+	for ch in flow_pulse_holder.get_children():
+		ch.queue_free()
+
+	var active_id := selected_part_id if selected_part_id > 0 else hovered_part_id
+	if active_id <= 0:
+		flow_tubes_mi.visible = false
+		return
+
+	var flow := ArchitectureRegistry.get_flow(active_id)
+	var in_ids: Array = flow.get("in", [])
+	var out_ids: Array = flow.get("out", [])
+	if in_ids.is_empty() and out_ids.is_empty():
+		flow_tubes_mi.visible = false
+		return
+
+	flow_tubes_mi.visible = true
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var active_rec: Dictionary = _part_map.get(active_id, {})
+	if active_rec.is_empty():
+		return
+	var p_center: Vector3 = (active_rec["node"] as Node3D).position
+
+	# Upstream (<- IN Amber)
+	for uid in in_ids:
+		var urec: Dictionary = _part_map.get(int(uid), {})
+		if not urec.is_empty():
+			var p_start: Vector3 = (urec["node"] as Node3D).position
+			_append_bezier_conduit(verts, cols, p_start, p_center, Color(0.98, 0.68, 0.14, 0.92), _flow_phase)
+
+	# Downstream (OUT -> Emerald)
+	for did in out_ids:
+		var drec: Dictionary = _part_map.get(int(did), {})
+		if not drec.is_empty():
+			var p_end: Vector3 = (drec["node"] as Node3D).position
+			_append_bezier_conduit(verts, cols, p_center, p_end, Color(0.12, 0.88, 0.56, 0.92), _flow_phase)
+
+	if verts.is_empty():
+		flow_tubes_mi.visible = false
+		return
+
+	var am := ArrayMesh.new()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_COLOR] = cols
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	flow_tubes_mi.mesh = am
+
+func _append_bezier_conduit(verts: PackedVector3Array, cols: PackedColorArray, p0: Vector3, p2: Vector3, col: Color, phase: float) -> void:
+	var mid := (p0 + p2) * 0.5 + Vector3(0.0, 0.055, 0.025)
+	var steps := 18
+	var thickness := 0.0022
+	for i in range(steps):
+		var t0 := float(i) / float(steps)
+		var t1 := float(i + 1) / float(steps)
+		var a := p0.lerp(mid, t0).lerp(mid.lerp(p2, t0), t0)
+		var b := p0.lerp(mid, t1).lerp(mid.lerp(p2, t1), t1)
+		for off in [Vector3.ZERO, Vector3(thickness, 0, 0), Vector3(0, thickness, 0), Vector3(0, 0, thickness)]:
+			verts.append(a + off); cols.append(col)
+			verts.append(b + off); cols.append(col)
+
+	# Animated signal pulse sphere along conduit
+	var pulse_pos := p0.lerp(mid, phase).lerp(mid.lerp(p2, phase), phase)
+	var pm := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.0065
+	sm.height = 0.013
+	pm.mesh = sm
+	pm.position = pulse_pos
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = col
+	pm.material_override = mat
+	flow_pulse_holder.add_child(pm)
 
 func apply_explosion_factor(factor: float) -> void:
 	explode_factor = clampf(factor, 0.0, 1.0)
@@ -40,6 +249,11 @@ func apply_explosion_factor(factor: float) -> void:
 		var n: Node3D = rec["node"]
 		n.position = rec["base_pos"] + rec["exp_offset"] * explode_factor
 	_rebuild_guide_lines()
+
+func set_shell_visible(vis: bool) -> void:
+	var rec: Dictionary = _part_map.get(40, {})
+	if not rec.is_empty():
+		(rec["node"] as Node3D).visible = vis
 
 func set_guides_visible(vis: bool) -> void:
 	show_guides = vis
@@ -86,35 +300,50 @@ func apply_render_style() -> void:
 	if floor_grid != null:
 		floor_grid.visible = not blueprint_mode
 	var active_id := selected_part_id if selected_part_id > 0 else hovered_part_id
+	var neighbor_ids := {}
+	if active_id > 0:
+		var fl := ArchitectureRegistry.get_flow(active_id)
+		for uid in fl.get("in", []):
+			neighbor_ids[int(uid)] = true
+		for did in fl.get("out", []):
+			neighbor_ids[int(did)] = true
+
+	var crt_xray := active_id in [24, 25, 27, 50, 53]
 
 	for rec in part_records:
 		var pid: int = rec["id"]
 		var n: Node3D = rec["node"]
 		var is_sel := (pid == selected_part_id)
 		var is_hov := (pid == hovered_part_id)
-		var is_dim := (active_id > 0 and pid != active_id) or (isolate_selected and selected_part_id > 0 and pid != selected_part_id)
+		var is_neighbor := neighbor_ids.has(pid)
+		var is_dim := (active_id > 0 and pid != active_id and not is_neighbor) or (isolate_selected and selected_part_id > 0 and pid != selected_part_id and not is_neighbor)
 
-		_style_node_recursive(n, is_sel, is_hov, is_dim)
+		_style_node_recursive(n, pid, is_sel, is_hov, is_neighbor, is_dim, crt_xray)
 
-func _style_node_recursive(node: Node, is_sel: bool, is_hov: bool, is_dim: bool) -> void:
+func _style_node_recursive(node: Node, pid: int, is_sel: bool, is_hov: bool, is_neighbor: bool, is_dim: bool, crt_xray: bool) -> void:
 	for ch in node.get_children():
 		if ch is MeshInstance3D:
 			var mi := ch as MeshInstance3D
 			if mi.name == "CadEdgeLines":
-				mi.visible = blueprint_mode or is_sel or is_hov
+				mi.visible = blueprint_mode or is_sel or is_hov or is_neighbor
 				var em := mi.material_override as StandardMaterial3D
 				if em != null:
 					if is_sel:
 						em.albedo_color = Color(0.01, 0.52, 0.78, 0.95)
+					elif is_neighbor:
+						em.albedo_color = Color(0.12, 0.78, 0.52, 0.85)
 					elif blueprint_mode:
-						em.albedo_color = Color(0.06, 0.09, 0.16, 0.10 if is_dim else 0.75)
+						em.albedo_color = Color(0.06, 0.09, 0.16, 0.12 if is_dim else 0.75)
 					else:
-						em.albedo_color = Color(0.22, 0.74, 0.97, 0.10 if is_dim else 0.65)
+						em.albedo_color = Color(0.22, 0.74, 0.97, 0.12 if is_dim else 0.65)
 			elif mi.material_override is StandardMaterial3D:
 				var m := mi.material_override as StandardMaterial3D
 				if m.has_meta("bp_color"):
 					var base_c: Color = m.get_meta("bp_color") if blueprint_mode else m.get_meta("real_color")
-					var alpha: float = 0.14 if is_dim else float(m.get_meta("base_alpha"))
+					var base_a := float(m.get_meta("base_alpha"))
+					if pid == 24 and crt_xray and base_a < 0.9:
+						base_a = 0.24
+					var alpha: float = 0.16 if is_dim else base_a
 					m.albedo_color = Color(base_c.r, base_c.g, base_c.b, alpha)
 					m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if alpha < 0.99 else BaseMaterial3D.TRANSPARENCY_DISABLED
 					m.metallic = 0.04 if blueprint_mode else float(m.get_meta("real_metal"))
@@ -127,6 +356,10 @@ func _style_node_recursive(node: Node, is_sel: bool, is_hov: bool, is_dim: bool)
 						m.emission_enabled = true
 						m.emission = Color(0.22, 0.74, 0.97)
 						m.emission_energy_multiplier = 0.32
+					elif is_neighbor:
+						m.emission_enabled = true
+						m.emission = Color(0.14, 0.78, 0.52)
+						m.emission_energy_multiplier = 0.22
 					else:
 						m.emission_enabled = false
-		_style_node_recursive(ch, is_sel, is_hov, is_dim)
+		_style_node_recursive(ch, pid, is_sel, is_hov, is_neighbor, is_dim, crt_xray)

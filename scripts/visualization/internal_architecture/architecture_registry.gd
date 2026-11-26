@@ -60,6 +60,74 @@ const PARTS := [
 	{"id": 55, "code": "VP52-RP-055", "name": "Rear Chassis Ventilation & Cooling Fan Exhaust Plate", "subsystem": "Chassis & Rear Enclosure", "material": "Stamped Steel Louvered Cover + Axial Fan", "axis": "-Z Rear (-3.4 u)", "spec": "Rear Exhaust Vent & Forced-Air Cooling", "desc": "Removable louvered cover plate on the rear bulkhead allowing convective heat exhaust from the power transformer and calibration access.", "service": "Keep rear ventilation slots unobstructed by at least 5 cm during operation.", "base": Vector3(0.35, 0.85, -1.72), "exp": Vector3(0.15, 0.25, -3.45), "pin": Vector3(0.35, 0.45, -0.1)}
 ]
 
+
+const SIGNAL_LINKS := {
+	17: {"in": [],         "out": [28, 32], "node": "N1_INPUT",       "path": "VERT"},
+	21: {"in": [],         "out": [28],     "node": "N1_INPUT",       "path": "VERT"},
+	16: {"in": [17],       "out": [28],     "node": "N2_COUPLING",    "path": "VERT"},
+	20: {"in": [21],       "out": [28],     "node": "N2_COUPLING",    "path": "VERT"},
+	28: {"in": [17, 21],   "out": [30],     "node": "N3_ATTENUATOR",  "path": "VERT"},
+	18: {"in": [28],       "out": [30],     "node": "N3_ATTENUATOR",  "path": "VERT"},
+	30: {"in": [28, 18],   "out": [31, 32], "node": "N4_PREAMP",      "path": "VERT"},
+	31: {"in": [30],       "out": [50],     "node": "N5_DELAY_LINE",  "path": "VERT"},
+	50: {"in": [31, 32],   "out": [24],     "node": "N6_VERT_DEFLECT","path": "VERT"},
+	9:  {"in": [30],       "out": [32],     "node": "N7_TRIGGER",     "path": "TRIG"},
+	10: {"in": [14, 30],   "out": [32],     "node": "N7_TRIGGER",     "path": "TRIG"},
+	14: {"in": [],         "out": [32],     "node": "N7_TRIGGER",     "path": "TRIG"},
+	13: {"in": [29],       "out": [32],     "node": "N8_SWEEP",       "path": "TRIG"},
+	29: {"in": [13],       "out": [32],     "node": "N8_SWEEP",       "path": "TRIG"},
+	32: {"in": [30, 29],   "out": [33, 50], "node": "N8_SWEEP",       "path": "TRIG"},
+	33: {"in": [32],       "out": [50],     "node": "N8_SWEEP",       "path": "TRIG"},
+	24: {"in": [50, 27],   "out": [3],      "node": "N6_VERT_DEFLECT","path": "VERT"},
+	26: {"in": [36],       "out": [24],     "node": "N6_VERT_DEFLECT","path": "VERT"},
+	27: {"in": [34, 37],   "out": [24],     "node": "HV_RAIL",        "path": "POWER"},
+	44: {"in": [],         "out": [45],     "node": "LV_RAIL",        "path": "POWER"},
+	45: {"in": [44],       "out": [34],     "node": "LV_RAIL",        "path": "POWER"},
+	34: {"in": [45],       "out": [35, 36], "node": "LV_RAIL",        "path": "POWER"},
+	35: {"in": [34],       "out": [36],     "node": "LV_RAIL",        "path": "POWER"},
+	36: {"in": [34, 35],   "out": [30, 32, 37], "node": "LV_RAIL",    "path": "POWER"},
+	37: {"in": [36],       "out": [54, 27], "node": "HV_RAIL",        "path": "POWER"},
+	54: {"in": [37],       "out": [24],     "node": "HV_RAIL",        "path": "POWER"}
+}
+
+const FLOW_PATHS := [
+	{
+		"key": "VERT",
+		"title": "PATH 01: VERTICAL Y-SIGNAL CHAIN",
+		"steps": [
+			{"pid": 17, "label": "01. CH1 BNC & AC/GND/DC"},
+			{"pid": 28, "label": "02. 1MΩ Step Attenuator"},
+			{"pid": 30, "label": "03. JFET Vertical Preamp"},
+			{"pid": 31, "label": "04. 160ns Coax Delay Line"},
+			{"pid": 50, "label": "05. Y/X Deflection Leads"},
+			{"pid": 24, "label": "06. 130BHB31 P31 CRT Beam"}
+		]
+	},
+	{
+		"key": "TRIG",
+		"title": "PATH 02: TRIGGER & X-SWEEP",
+		"steps": [
+			{"pid": 9,  "label": "01. Trigger Level & Slope"},
+			{"pid": 29, "label": "02. TIME/DIV Timing Switch"},
+			{"pid": 32, "label": "03. Schmitt & Miller Sweep"},
+			{"pid": 33, "label": "04. X-Output Driver Stage"}
+		]
+	},
+	{
+		"key": "POWER",
+		"title": "PATH 03: MAINS, LV & -1.5kV HV",
+		"steps": [
+			{"pid": 44, "label": "01. IEC AC Inlet & Fuse"},
+			{"pid": 34, "label": "02. Shielded EI Transformer"},
+			{"pid": 36, "label": "03. ±12V / +140V Regulator"},
+			{"pid": 37, "label": "04. -1.5kV / +2kV HV Inverter"}
+		]
+	}
+]
+
+static func get_flow(id: int) -> Dictionary:
+	return SIGNAL_LINKS.get(id, {"in": [], "out": [], "node": "N3_ATTENUATOR", "path": "VERT"})
+
 static func get_part(id: int) -> Dictionary:
 	for p in PARTS:
 		if p["id"] == id:

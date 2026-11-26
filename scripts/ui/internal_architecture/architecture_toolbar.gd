@@ -8,15 +8,18 @@ signal camera_preset_selected(preset_key: String)
 signal callouts_toggled(show_pins: bool)
 signal guides_toggled(show_axes: bool)
 signal isolate_toggled(isolate: bool)
+signal drawer_toggled(show_drawer: bool)
+signal shell_toggled(show_shell: bool)
+signal reset_camera_requested()
 
 var btn_2d: Button
 var btn_3d: Button
+var btn_drawer: Button
 var btn_style: Button
 var preset_opt: OptionButton
 var btn_0: Button
 var btn_72: Button
 var btn_100: Button
-var btn_anim: Button
 var exp_slider: HSlider
 var btn_pins: Button
 var btn_axes: Button
@@ -38,6 +41,14 @@ func _ready() -> void:
 	btn_3d.toggle_mode = true
 	btn_3d.pressed.connect(func(): _set_mode(true))
 	add_child(btn_3d)
+
+	btn_drawer = Button.new()
+	btn_drawer.text = "Flow Tree & Lab"
+	btn_drawer.toggle_mode = true
+	btn_drawer.button_pressed = true
+	btn_drawer.visible = false
+	btn_drawer.toggled.connect(func(p: bool): drawer_toggled.emit(p))
+	add_child(btn_drawer)
 
 	btn_style = Button.new()
 	btn_style.text = "Style: Service Manual"
@@ -82,7 +93,7 @@ func _ready() -> void:
 	exp_slider.max_value = 1.0
 	exp_slider.step = 0.01
 	exp_slider.value = 0.72
-	exp_slider.custom_minimum_size = Vector2(95, 22)
+	exp_slider.custom_minimum_size = Vector2(88, 22)
 	exp_slider.visible = false
 	exp_slider.value_changed.connect(func(v: float): explosion_changed.emit(v))
 	add_child(exp_slider)
@@ -118,6 +129,6 @@ func _set_exp(v: float) -> void:
 func _set_mode(is_3d: bool) -> void:
 	btn_2d.button_pressed = not is_3d
 	btn_3d.button_pressed = is_3d
-	for w in [btn_style, preset_opt, btn_0, btn_72, btn_100, exp_slider, btn_pins, btn_axes, btn_isolate]:
+	for w in [btn_drawer, btn_style, preset_opt, btn_0, btn_72, btn_100, exp_slider, btn_pins, btn_axes, btn_isolate]:
 		w.visible = is_3d
 	view_mode_changed.emit(is_3d)
