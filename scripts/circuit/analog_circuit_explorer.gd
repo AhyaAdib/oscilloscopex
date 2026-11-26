@@ -422,6 +422,26 @@ func _setup_milestone1_3d_layer() -> void:
 			if _arch_controller != null:
 				_arch_controller.set_explosion_factor(factor)
 		)
+		_arch_toolbar.render_style_changed.connect(func(is_bp: bool) -> void:
+			if _arch_controller != null:
+				_arch_controller.set_render_style(is_bp)
+		)
+		_arch_toolbar.camera_preset_selected.connect(func(preset_key: String) -> void:
+			if _arch_controller != null:
+				_arch_controller.set_camera_preset(preset_key)
+		)
+		_arch_toolbar.callouts_toggled.connect(func(vis: bool) -> void:
+			if _arch_controller != null:
+				_arch_controller.set_callouts_visible(vis)
+		)
+		_arch_toolbar.guides_toggled.connect(func(vis: bool) -> void:
+			if _arch_controller != null:
+				_arch_controller.set_guides_visible(vis)
+		)
+		_arch_toolbar.isolate_toggled.connect(func(iso: bool) -> void:
+			if _arch_controller != null:
+				_arch_controller.set_isolate_selected(iso)
+		)
 		_arch_toolbar.shell_toggled.connect(func(show_shell: bool) -> void:
 			if _arch_controller != null:
 				_arch_controller.set_ghost_shell_visible(show_shell)
